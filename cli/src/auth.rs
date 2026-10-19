@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, io::Write, path::PathBuf, time::Duration};
 use url::Url;
 
-const WEB_BASE: &str = "http://localhost:3000";
-
+pub const WEB_BASE: &str = "http://localhost:3000";
 #[derive(Serialize, Deserialize)]
 struct Credentials {
     token: String,
@@ -39,6 +38,11 @@ fn save_token(token: &str) -> Result<()> {
         .as_bytes(),
     )?;
     Ok(())
+}
+
+pub fn load_token() -> Result<String> {
+    let raw = fs::read_to_string(creds_path()?).context("not logged in, run `ship login` first")?;
+    Ok(serde_json::from_str::<Credentials>(&raw)?.token)
 }
 
 pub async fn login() -> Result<()> {

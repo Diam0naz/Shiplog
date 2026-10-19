@@ -1,4 +1,5 @@
 mod auth;
+mod ship;
 
 use clap::{Parser, Subcommand};
 
@@ -25,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Login => auth::login().await?,
-        Commands::Ship { message } => println!("ship: not implemented yet ({:?})", message),
+        Commands::Ship { message } => ship::run(message).await?,
     }
     Ok(())
 }
