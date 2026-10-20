@@ -33,8 +33,16 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# encrypted LinkedIn token written by /api/linkedin/callback
+/.data/
+
+# old landing page kept for reference, and its build archive — never shipped
+/src/_old_frontend/
+/src/shiplog-landing.zip
+
 # vercel
 .vercel
+/.vercel/
 
 # typescript
 *.tsbuildinfo

@@ -1,40 +1,89 @@
+/*
+  shiplog design tokens.
+  Day watch (light) is chart paper and navy ink. Night watch (dark) is deep navy.
+  The terminal "deck" colors stay navy in both, so the terminals read as instruments
+  sitting on the page.
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light dark;
+
+  /* Page */
+  --paper: #eceee8;
+  --paper-2: #e2e6dd;
+  --card: #f7f8f4;
+  --ink: #0d2133;
+  --ink-2: #3a4d5d;
+  --ink-3: #566873;
+  --rule: #c3cbc2;
+  --rule-strong: #9aa8a2;
+
+  /* Accents */
+  --yellow: #f5c518;
+  --navy: #0d2133; /* text on yellow, in both themes */
+  --sea: #1b7461; /* success text on paper */
+  --logo-bg: #0d2133;
+
+  /* Terminals */
+  --deck: #0c1b2a;
+  --deck-2: #112638;
+  --deck-3: #081624;
+  --deck-fg: #e6edf2;
+  --deck-dim: #8fa3b3;
+  --deck-rule: #263d52;
+  --deck-ok: #5cd6b0;
+  --deck-edge: #0d2133;
+
+  --focus: var(--ink);
+
+  --font-body: var(--font-archivo), "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --paper: #0a1622;
+    --paper-2: #07111b;
+    --card: #0f2030;
+    --ink: #e8eef2;
+    --ink-2: #aabbc8;
+    --ink-3: #8499a8;
+    --rule: #1f3549;
+    --rule-strong: #34506a;
+    --sea: #5cd6b0;
+    --logo-bg: #1b3b57;
+    --deck: #0c1b2a;
+    --deck-edge: #2a4259;
   }
 }
 
-html {
-  height: 100%;
-}
-
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-}
-
-body {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 * {
-  box-sizing: border-box;
-  padding: 0;
   margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 88px;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 a {
@@ -42,8 +91,46 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+ol,
+ul {
+  list-style: none;
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background: var(--yellow);
+  color: var(--navy);
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
   html {
-    color-scheme: dark;
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
   }
 }

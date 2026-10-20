@@ -1,0 +1,149 @@
+/* ==========================================================================
+   Legal documents (privacy, terms).
+   Uses the same tokens as the landing page, with a narrower reading column.
+   ========================================================================== */
+
+.main {
+  padding: 72px 0 88px;
+}
+
+.column {
+  max-width: 760px;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.title {
+  margin-top: 14px;
+  font-size: clamp(2rem, 1.35rem + 2.4vw, 3rem);
+  font-weight: 800;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  font-variation-settings: "wdth" 112;
+  text-wrap: balance;
+}
+
+.updated {
+  margin-top: 16px;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+}
+
+.summary {
+  margin-top: 22px;
+  padding-left: 16px;
+  border-left: 3px solid var(--yellow);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  color: var(--ink-2);
+}
+
+.doc {
+  margin-top: 40px;
+  color: var(--ink-2);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.doc h2 {
+  margin-top: 40px;
+  padding-top: 28px;
+  border-top: 1px solid var(--rule);
+  font-size: 1.1875rem;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.doc h2:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.doc h3 {
+  margin-top: 24px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.doc p {
+  margin-top: 14px;
+}
+
+.doc ul {
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.doc li {
+  position: relative;
+  padding-left: 22px;
+}
+
+.doc li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.75em;
+  width: 8px;
+  height: 2px;
+  background: var(--yellow);
+}
+
+.doc strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.doc a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+
+.doc a:hover {
+  text-decoration-color: var(--yellow);
+}
+
+.doc code {
+  padding: 1px 5px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--card);
+  font-size: 0.875em;
+  color: var(--ink);
+}
+
+.back {
+  margin-top: 56px;
+  padding-top: 24px;
+  border-top: 1px solid var(--rule);
+  font-size: 0.9375rem;
+}
+
+.back a {
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
+}
+
+.back a:hover {
+  text-decoration-color: var(--yellow);
+}
+
+@media (max-width: 640px) {
+  .main {
+    padding: 48px 0 64px;
+  }
+}

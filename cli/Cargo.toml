@@ -1,5 +1,5 @@
 [package]
-name = "ship"
+name = "shiplog"
 version = "0.1.0"
 edition = "2024"
 
@@ -8,12 +8,28 @@ anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive"] }
 dirs = "7.0.0"
 git2 = "0.21.0"
-inquire = "0.9.4"
+inquire = { version = "0.9.4", features = ["editor"] }
 open = "5.4.4"
+# "supports-colors" exposes the global override used to drop ANSI escapes
+# when stdout is piped or NO_COLOR is set.
+owo-colors = { version = "4.0", features = ["supports-colors"] }
 rand = "0.8"
+terminal_size = "0.4.1"
 reqwest = { version = "0.13.5", features = ["json"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 tiny_http = "0.12.0"
-tokio = { version = "1.53.3", features = ["full"] }
+# Only the executor + macros are needed; "full" pulls in net, signal, process,
+# io-std, sync etc. that this binary never uses.
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros"] }
 url = "2.5.8"
+
+[profile.release]
+# Strip debug symbols → smaller binary
+strip = true
+# Enable link-time optimisation → dead code across crate boundaries removed
+lto = "thin"
+# Optimise for size as well as speed (fits CLI use case)
+opt-level = "z"
+# One codegen unit lets the optimiser see the whole program
+codegen-units = 1

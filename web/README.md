@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# shiplog web
 
-## Getting Started
+The Next.js side of shiplog: the landing page, the browser login page the CLI
+opens, and the API the CLI talks to.
 
-First, run the development server:
+For full setup — including building and running the CLI — see the
+[root README](../README.md).
 
-```bash
+## Run it
+
+```sh
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Serves <http://localhost:3000> (Next picks another port if 3000 is taken; the
+CLI needs `SHIPLOG_WEB` pointed at whatever port it prints).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Pages
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Route | What it is |
+|---|---|
+| `/` | Landing page |
+| `/privacy` | Privacy policy — what the CLI sends, what is stored, how to delete it |
+| `/terms` | Terms and conditions |
+| `/cli/login` | The page `shiplog login` opens in your browser |
 
-## Learn More
+Both legal pages live in `src/app/privacy/page.tsx` and `src/app/terms/page.tsx` and share
+`src/app/LegalPage.tsx`; edit the copy there. They are linked from the footer of every page.
 
-To learn more about Next.js, take a look at the following resources:
+## API surface
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Route | Used by | Notes |
+|---|---|---|
+| `GET /cli/login?port=&state=` | `shiplog login` | Page with an "Authorize" link back to the CLI's loopback listener |
+| `POST /api/cli/token` | `shiplog login` | Exchanges the one-time code for a session token (currently a dev stub) |
+| `POST /api/draft` | `shiplog post` | Reads `Authorization: Bearer …`, returns `{ draft }` |
+| `POST /api/post` | `shiplog post` → **Post** | Publishes to `targets` (default: every connected platform). `200` all ok, `207` partial, `409` not connected, `502` rejected |
+| `GET /api/connections` | `shiplog post` | Which platforms have a stored token, so the CLI only offers working ones |
+| `GET /api/linkedin/connect` | you, once | Starts the LinkedIn OAuth flow |
+| `GET /api/linkedin/callback` | LinkedIn | Stores the encrypted token in `.data/linkedin.json` |
+| `GET /api/x/connect` | you, once | Starts the X OAuth 2.0 + PKCE flow |
+| `GET /api/x/callback` | X | Exchanges the code and stores the token in `.data/x.json` |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Configuration
 
-## Deploy on Vercel
+Environment variables live in `.env.local` (git-ignored); the full table is in
+the [root README](../README.md#web-app-configuration). Without the `LLM_*`
+variables, `/api/draft` returns a template draft. Without a platform's
+credentials and `TOKEN_ENC_KEY`, `/api/post` responds `409` with a message
+naming the missing connection.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Tokens are written to `.data/linkedin.json` and `.data/x.json` locally. Deployed,
+the filesystem is read-only, so they go to private Vercel Blobs instead —
+connect a Blob store to the project and Vercel sets `BLOB_STORE_ID` (OIDC
+credentials by default). Without a store `/api/post` returns a storage error
+naming the platform rather than silently dropping the token.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+X access tokens last about two hours; `/api/x/callback` also stores the refresh
+token so posting can renew it without another consent screen. `X_API_BASE` and
+`X_AUTH_BASE` override the X endpoints, so the flow can be exercised against a
+local mock without touching the real API.
+
+## Deploy
+
+```sh
+vercel link --project shiplog
+vercel deploy        # first deploy of a new project goes to production
+vercel --prod        # subsequent production promotions
+```
+
+## Checks
+
+```sh
+npm run lint
+npm run build
+```
