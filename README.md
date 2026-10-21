@@ -8,11 +8,12 @@ The repo has two halves:
 | Path | What it is |
 |---|---|
 | `cli/` | The `shiplog` command-line tool (Rust) |
-| `web/` | The Next.js app: landing page, browser login page, draft + publishing API |
+| `web/` | The Next.js app: landing page, GitHub sign-in, draft + publishing API |
 
 The CLI is a thin client. It reads your git history locally, then talks to the
-web app over HTTP — there is no database, just one encrypted token file per
-connected platform (LinkedIn and X).
+web app over HTTP. There is no database server: accounts, sessions and the
+encrypted platform tokens are JSON in a Vercel Blob store (or `web/.data/` when
+you run it locally).
 
 ---
 
@@ -74,11 +75,14 @@ shiplog login
      If nothing opens, visit this URL:
      →  http://localhost:3000/cli/login?port=42317&state=…
      Waiting for approval — press Ctrl-C to cancel.
-  ✓  Logged in. Credentials saved to ~/.config/shiplog/credentials.json
+  ✓  Logged in as octocat. Credentials saved to ~/.config/shiplog/credentials.json
 ```
 
-Approve on the page that opens; the CLI catches the callback on a loopback port,
-exchanges the one-time code for a token and stores it. It waits up to 3 minutes.
+The page signs you in with GitHub on first run, then hands the CLI a one-time
+code valid for two minutes. The CLI catches the callback on a loopback port,
+exchanges the code for a session token and stores it with `0600` permissions.
+Sessions last 90 days and can be revoked with `shiplog logout`. It waits up to
+3 minutes for the browser.
 
 ### 5. Draft a post
 
@@ -154,9 +158,9 @@ Second post sample.
 
 | Step | Without any configuration | To go further |
 |---|---|---|
-| `shiplog login` | Works — the dev server issues a stub token (`dev-code` → `dev-token-123`) | Replace `/api/cli/token` with your real account auth |
+| `shiplog login` | Requires a GitHub OAuth App (below) | Add `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` |
 | `shiplog post` (draft) | Works — falls back to a plain template draft | Set the three `LLM_*` vars below for model-written drafts |
-| `shiplog post` → **Post** | Fails with `no account connected yet` | Connect LinkedIn and/or X (below); each needs its app credentials plus `TOKEN_ENC_KEY` |
+| `shiplog post` → **Post** | Fails with `no account connected yet` | Connect LinkedIn, X, and/or Farcaster (below); each needs its app credentials plus `TOKEN_ENC_KEY` |
 | `shiplog voice` | Works — stored on your machine only | — |
 
 ---
@@ -171,48 +175,85 @@ Put these in `web/.env.local` (Next.js loads it automatically) and restart
 | `LLM_BASE_URL` | AI drafts | OpenAI-compatible base URL, e.g. `https://api.openai.com/v1` — the route appends `/chat/completions` |
 | `LLM_API_KEY` | AI drafts | Sent as `Authorization: Bearer …`; omit for a local model with no auth |
 | `LLM_MODEL` | AI drafts | Model name passed straight through |
+| `GITHUB_CLIENT_ID` | Signing in | Client id of a GitHub OAuth App — the only identity provider |
+| `GITHUB_CLIENT_SECRET` | Signing in | Client secret of the same OAuth App |
+| `GITHUB_REDIRECT_URI` | Optional | Defaults to `<origin>/api/github/callback`; must match the OAuth App exactly |
 | `TOKEN_ENC_KEY` | Posting | 64 hex characters (32 bytes) used to encrypt the LinkedIn and X tokens with AES-256-GCM. Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `BLOB_STORE_ID` | Posting when deployed | Set automatically when a [Vercel Blob](https://vercel.com/docs/storage/vercel-blob) store is connected; the SDK authenticates with OIDC by default. `BLOB_READ_WRITE_TOKEN` also works (CI, or local use of Blob). With neither, the token goes to `web/.data/` |
 | `LINKEDIN_CLIENT_ID` | Posting | From your LinkedIn developer app |
 | `LINKEDIN_CLIENT_SECRET` | Posting | From your LinkedIn developer app |
-| `LINKEDIN_REDIRECT_URI` | Posting | Must match the app exactly, e.g. `http://localhost:3000/api/linkedin/callback` |
+| `LINKEDIN_REDIRECT_URI` | Posting | Must match the app exactly, e.g. `http://localhost:3000/api/linkedin/callback` or `https://shiplog-sage.vercel.app/api/linkedin/callback` |
 | `LINKEDIN_VERSION` | Optional | `Linkedin-Version` header, defaults to `202609` |
 | `X_CLIENT_ID` | Posting to X | OAuth 2.0 client id from your X developer app |
 | `X_CLIENT_SECRET` | Posting to X | Client secret. Leave it out only if the app is registered as a public client |
-| `X_REDIRECT_URI` | Optional | Defaults to `<origin>/api/x/callback`; set it when the app requires an exact value, e.g. `http://localhost:3000/api/x/callback` |
+| `X_REDIRECT_URI` | Optional | Defaults to `<origin>/api/x/callback`; set it when the app requires an exact value, e.g. `http://localhost:3000/api/x/callback` or `https://shiplog-sage.vercel.app/api/x/callback` |
+| `FARCASTER_CLIENT_ID` | Posting to Farcaster | OAuth client id from your Farcaster app (Sign In with Farcaster) |
+| `FARCASTER_CLIENT_SECRET` | Posting to Farcaster | **Optional** — client secret from your Farcaster app. Omit for public clients (most Farcaster apps). |
+| `FARCASTER_REDIRECT_URI` | Optional | Defaults to `<origin>/api/farcaster/callback`; set it when the app requires an exact value, e.g. `https://shiplog-sage.vercel.app/api/farcaster/callback` |
+| `FARCASTER_API_KEY` | Posting to Farcaster | Neynar API key for casting (get from neynar.com) |
+| `FARCASTER_API_BASE` | Optional | Neynar API base URL, defaults to `https://api.neynar.com/v2` |
+| `FARCASTER_AUTH_BASE` | Optional | Farcaster auth base URL, defaults to `https://www.farcaster.xyz` |
 
 If `LLM_BASE_URL` or `LLM_MODEL` is missing — or the model call fails — the
 draft endpoint logs the error and returns a template draft instead, so the CLI
 flow still works end to end.
 
+### Signing in
+
+Create a GitHub OAuth App (Settings → Developer settings → OAuth Apps) and
+register the callback URLs `http://localhost:3000/api/github/callback` and
+`https://shiplog-sage.vercel.app/api/github/callback`. One app can hold up to 10 callback
+URLs, so a single app covers both; use one app per environment if you would
+rather keep the secrets separate. Leave **Allow wildcard matching** and **Enable
+device flow** off — this flow needs neither. Then set `GITHUB_CLIENT_ID` and
+`GITHUB_CLIENT_SECRET`. `shiplog login` then:
+
+1. opens `/cli/login`, which redirects to GitHub when you have no session;
+2. GitHub returns to `/api/github/callback`, which creates your user record and
+   sets an httpOnly `ship_session` cookie valid for 90 days;
+3. `/cli/login` mints a single-use code — stored only as a SHA-256 hash, valid
+   for two minutes — and redirects it to the CLI's loopback listener;
+4. `POST /api/cli/token` trades that code for a 48-byte session token, also
+   stored only as a hash. Every API request presents it as a bearer token.
+
+Only the `read:user` scope is requested, so shiplog never reads your
+repositories. There is no shared account: each user's LinkedIn and X tokens are
+keyed to their GitHub id, so two people on one deployment never post from each
+other's accounts.
+
 ### Connecting LinkedIn
 
-Posting is separate from CLI login. With the env vars set, start the web app and
-open:
+Posting is separate from CLI login, and a platform connection belongs to the
+user who makes it. Sign in through `shiplog login` first — the connect URL sends
+you through GitHub if you are not — then open:
 
 <http://localhost:3000/api/linkedin/connect>
 
-Authorize the app; the callback stores the encrypted token — in
-`web/.data/linkedin.json` locally, or in a private Vercel Blob
-(`shiplog/linkedin-token.json`) when deployed. The requested scopes are
+**Production:** <https://shiplog-sage.vercel.app/api/linkedin/connect>
+
+Authorize the app; the callback stores the encrypted token under your user id —
+in `web/.data/shiplog/users/<github-id>/linkedin-token.json` locally, or in a private
+Vercel Blob (`shiplog/users/<github-id>/linkedin-token.json`) when deployed. The requested scopes are
 `openid profile w_member_social`, so your LinkedIn app needs those products
 approved. Reconnect the same way when the token expires — `shiplog post` then
 reports `LinkedIn connection expired`.
 
 Serverless filesystems are read-only, so a deployment without a Blob store
-cannot persist the token. Rather than silently losing it, the callback and the
-post endpoint fail with `LinkedIn token storage is not configured: add a Vercel
-Blob store…` — connect a Blob store (Vercel then sets `BLOB_STORE_ID`),
-redeploy, and reconnect LinkedIn.
+cannot persist anything — accounts, sessions and platform tokens alike. Rather
+than silently losing data, every write fails with `Storage is not configured:
+add a Vercel Blob store to this project (it sets BLOB_STORE_ID), then redeploy`.
+Connect a Blob store, redeploy, and sign in again.
 
 ### Connecting X
 
 In the X developer portal, create an app with OAuth 2.0 enabled, set its
 callback URL to `http://localhost:3000/api/x/callback` (or your deployed
-`/api/x/callback`), and put the client id and secret in `.env.local`. Then
+`https://shiplog-sage.vercel.app/api/x/callback`), and put the client id and secret in `.env.local`. Then
 open:
 
 <http://localhost:3000/api/x/connect>
+
+**Production:** <https://shiplog-sage.vercel.app/api/x/connect>
 
 X uses OAuth 2.0 with PKCE: the verifier lives in a 10-minute cookie and only
 its SHA-256 challenge is sent to X, so the token exchange cannot be replayed.
@@ -220,12 +261,47 @@ The access token expires after about two hours, but the `offline.access` scope
 lets the service refresh it silently and store the rotated pair, so a connected
 account keeps working without another trip through the consent screen. The
 token is encrypted with the same `TOKEN_ENC_KEY` and kept separately from the
-LinkedIn one — `web/.data/x.json` locally, `shiplog/x-token.json` in a private
-Vercel Blob when deployed.
+LinkedIn one — `web/.data/users/<github-id>/x-token.json` locally,
+`shiplog/users/<github-id>/x-token.json` in a private Vercel Blob when deployed
+(the local copy is `web/.data/shiplog/users/<github-id>/x-token.json`).
+The connect URL also requires a signed-in user and sends you through GitHub
+first if you are not.
 
 Connecting one platform never disturbs the other. To stop publishing to a
 platform, remove its token file (or overwrite the Blob) and reconnect only the
 ones you want.
+
+### Connecting Farcaster
+
+Farcaster uses **Sign In with Farcaster (SIWF)** — an OAuth 2.0 flow based on
+EIP-4361 (Sign-In with Ethereum). You'll need:
+
+1. A **Neynar account** (neynar.com) for the API key to post casts
+2. A **Farcaster app** registered at [Farcaster Developer Portal](https://www.farcaster.xyz/developers)
+
+In the Farcaster developer portal, create an app and set the redirect URI to:
+`http://localhost:3000/api/farcaster/callback` (or your deployed
+`https://shiplog-sage.vercel.app/api/farcaster/callback`)
+
+Add these to `.env.local`:
+
+```bash
+FARCASTER_CLIENT_ID=your_client_id
+FARCASTER_CLIENT_SECRET=your_client_secret
+FARCASTER_API_KEY=your_neynar_api_key
+```
+
+Then open:
+
+<http://localhost:3000/api/farcaster/connect>
+
+**Production:** <https://shiplog-sage.vercel.app/api/farcaster/connect>
+
+The flow:
+1. Redirects to Farcaster for authorization (Sign In with Farcaster)
+2. Exchanges code for access token + signer UUID
+3. Stores encrypted credentials under your user id
+4. Uses Neynar API with the signer to cast on your behalf
 
 ---
 
@@ -251,7 +327,8 @@ Set the variables from the table above in the Vercel project (dashboard or
 
 | Command | What it does |
 |---|---|
-| `shiplog login` | Browser-based login; writes the token to disk |
+| `shiplog login` | GitHub sign-in through the browser; writes the session token to disk |
+| `shiplog logout` | Revokes the session on the server and deletes the local token |
 | `shiplog post [MESSAGE] [--to TARGETS]` | Draft from recent commits, then Post / Edit / Skip. `--to` is `linkedin`, `x`, `all`, or a comma-separated list |
 | `shiplog voice` | Edit the voice samples used to steer drafts |
 | `shiplog --help` | Usage, `--version` for the version |
@@ -274,12 +351,13 @@ terminal, so `shiplog post | tee log` stays plain text.
 
 | File | Purpose |
 |---|---|
-| `<config>/shiplog/credentials.json` | Session token, created with `0600` permissions |
+| `<config>/shiplog/credentials.json` | Session token, created with `0600` permissions; use `shiplog logout` to revoke it server-side |
 | `<config>/shiplog/voice.txt` | Voice samples, separated by `---` |
 | `<repo>/.git/shiplog-last` | OID of the last posted commit (written atomically) |
 
-Deleting `credentials.json` logs you out. Deleting `.git/shiplog-last` makes the
-next `post` re-draft from your recent history.
+`shiplog logout` revokes the server session and deletes `credentials.json`;
+removing that file by hand only forgets the token on this machine. Deleting
+`.git/shiplog-last` makes the next `post` re-draft from your recent history.
 
 ---
 
@@ -288,7 +366,7 @@ next `post` re-draft from your recent history.
 | Message | Meaning / fix |
 |---|---|
 | `not logged in — run shiplog login first` | No `credentials.json` yet; run `shiplog login` |
-| `session expired — run shiplog login again` | The server rejected the token (401); log in again |
+| `session expired — run shiplog login again` | The server rejected the token (401): revoked, expired, or the store was reset; log in again |
 | `nothing new since your last ship.` | Every commit is already covered — commit something, or delete `.git/shiplog-last` |
 | `not inside a git repository` | Run the command from inside a repo |
 | `no commits yet` | The repo has no history to draft from |
