@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { postToFarcaster } from "@/lib/farcaster";
 import { postToLinkedIn } from "@/lib/linkedin";
 import {
   ExpiredError,
@@ -8,14 +9,16 @@ import {
   PLATFORMS,
   type Platform,
 } from "@/lib/publish";
+import { requireUser } from "@/lib/session";
 import { postToX } from "@/lib/x";
 
 const PUBLISHERS: Record<
   Platform,
-  (text: string) => Promise<{ id?: string; url?: string }>
+  (userId: string, text: string) => Promise<{ id?: string; url?: string }>
 > = {
   linkedin: postToLinkedIn,
   x: postToX,
+  farcaster: postToFarcaster,
 };
 
 type Result = {
@@ -29,12 +32,13 @@ type Result = {
 };
 
 const usage = (origin: string) =>
-  `Connect an account first: LinkedIn at ${origin}/api/linkedin/connect or X at ${origin}/api/x/connect`;
+  `Connect an account first: LinkedIn at ${origin}/api/linkedin/connect, X at ${origin}/api/x/connect, or Farcaster at ${origin}/api/farcaster/connect`;
 
 export async function POST(req: Request) {
-  if (req.headers.get("authorization") !== "Bearer dev-token-123") {
+  const user = await requireUser(req);
+  if (!user)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+
   const body = await req.json();
   const { text, targets } = body as { text?: unknown; targets?: unknown };
 
@@ -69,7 +73,7 @@ export async function POST(req: Request) {
 
   for (const platform of chosen) {
     try {
-      const out = await PUBLISHERS[platform](text);
+      const out = await PUBLISHERS[platform](user.id, text);
       results.push({ platform, ok: true, id: out.id, url: out.url });
     } catch (e) {
       const message = e instanceof Error ? e.message : "post failed";

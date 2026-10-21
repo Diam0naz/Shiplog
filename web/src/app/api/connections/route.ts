@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { loadLinkedIn, loadX } from "@/lib/tokens";
+import { requireUser } from "@/lib/session";
+import { loadFarcaster, loadLinkedIn, loadX } from "@/lib/tokens";
 
 /**
  * Which publishing accounts this deployment holds. The CLI uses it to offer
@@ -7,12 +8,16 @@ import { loadLinkedIn, loadX } from "@/lib/tokens";
  * user has already approved a post.
  */
 export async function GET(req: Request) {
-  if (req.headers.get("authorization") !== "Bearer dev-token-123") {
+  const user = await requireUser(req);
+  if (!user)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
 
   try {
-    const [linkedin, x] = await Promise.all([loadLinkedIn(), loadX()]);
+    const [linkedin, x, farcaster] = await Promise.all([
+      loadLinkedIn(user.id),
+      loadX(user.id),
+      loadFarcaster(user.id),
+    ]);
     return NextResponse.json({
       linkedin: linkedin
         ? {
@@ -27,6 +32,13 @@ export async function GET(req: Request) {
             // An expired X token is still usable when a refresh token exists.
             expired: Date.now() >= x.expiresAt && !x.refreshToken,
             username: x.username,
+          }
+        : { connected: false },
+      farcaster: farcaster
+        ? {
+            connected: true,
+            expired: false, // Farcaster tokens don't expire the same way
+            username: farcaster.username,
           }
         : { connected: false },
     });
