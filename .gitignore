@@ -1,0 +1,33 @@
+# Deploy scripts (contains secrets)
+deploy-env.sh
+
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Node
+node_modules/
+.env.local
+.env*.local
+.next/
+out/
+build/
+*.log
+npm-debug.log*
+
+# Vercel
+.vercel/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local data
+web/.data/
