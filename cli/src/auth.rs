@@ -332,7 +332,7 @@ pub async fn connect(platform: Option<String>) -> Result<()> {
         let connect_path = match p {
             "linkedin" => "/api/linkedin/connect",
             "x" => "/api/x/connect",
-            "farcaster" => "/api/farcaster/connect",
+            "farcaster" => "/connect/farcaster", // Frontend page with SIWN button
             _ => unreachable!(),
         };
         let url = format!("{base}{connect_path}");

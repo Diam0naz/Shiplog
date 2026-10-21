@@ -187,12 +187,9 @@ Put these in `web/.env.local` (Next.js loads it automatically) and restart
 | `X_CLIENT_ID` | Posting to X | OAuth 2.0 client id from your X developer app |
 | `X_CLIENT_SECRET` | Posting to X | Client secret. Leave it out only if the app is registered as a public client |
 | `X_REDIRECT_URI` | Optional | Defaults to `<origin>/api/x/callback`; set it when the app requires an exact value, e.g. `http://localhost:3000/api/x/callback` or `https://shiplog-sage.vercel.app/api/x/callback` |
-| `FARCASTER_CLIENT_ID` | Posting to Farcaster | OAuth client id from your Farcaster app (Sign In with Farcaster) |
-| `FARCASTER_CLIENT_SECRET` | Posting to Farcaster | **Optional** — client secret from your Farcaster app. Omit for public clients (most Farcaster apps). |
-| `FARCASTER_REDIRECT_URI` | Optional | Defaults to `<origin>/api/farcaster/callback`; set it when the app requires an exact value, e.g. `https://shiplog-sage.vercel.app/api/farcaster/callback` |
 | `FARCASTER_API_KEY` | Posting to Farcaster | Neynar API key for casting (get from neynar.com) |
+| `NEXT_PUBLIC_NEYNAR_APP_ID` | Posting to Farcaster | Neynar App ID for SIWN button (get from neynar.com) |
 | `FARCASTER_API_BASE` | Optional | Neynar API base URL, defaults to `https://api.neynar.com/v2` |
-| `FARCASTER_AUTH_BASE` | Optional | Farcaster auth base URL, defaults to `https://www.farcaster.xyz` |
 
 If `LLM_BASE_URL` or `LLM_MODEL` is missing — or the model call fails — the
 draft endpoint logs the error and returns a template draft instead, so the CLI
@@ -273,35 +270,32 @@ ones you want.
 
 ### Connecting Farcaster
 
-Farcaster uses **Sign In with Farcaster (SIWF)** — an OAuth 2.0 flow based on
-EIP-4361 (Sign-In with Ethereum). You'll need:
+Farcaster does **not** use OAuth 2.0. Instead, it uses **Sign In With Neynar (SIWN)** — a managed auth flow that returns a `fid` and `signer_uuid` after the user approves in their Farcaster wallet (Warpcast, etc.).
 
-1. A **Neynar account** (neynar.com) for the API key to post casts
-2. A **Farcaster app** registered at [Farcaster Developer Portal](https://www.farcaster.xyz/developers)
+You'll need:
+1. A **Neynar account** (neynar.com) → create an **App** to get an **App ID** and **API Key**
+2. No Farcaster developer portal registration needed
 
-In the Farcaster developer portal, create an app and set the redirect URI to:
-`http://localhost:3000/api/farcaster/callback` (or your deployed
-`https://shiplog-sage.vercel.app/api/farcaster/callback`)
-
-Add these to `.env.local`:
+Add these to `.env.local` (or Vercel env vars):
 
 ```bash
-FARCASTER_CLIENT_ID=your_client_id
-FARCASTER_CLIENT_SECRET=your_client_secret
 FARCASTER_API_KEY=your_neynar_api_key
+NEXT_PUBLIC_NEYNAR_APP_ID=your_neynar_app_id
 ```
 
 Then open:
 
-<http://localhost:3000/api/farcaster/connect>
+<http://localhost:3000/connect/farcaster>
 
-**Production:** <https://shiplog-sage.vercel.app/api/farcaster/connect>
+**Production:** <https://shiplog-sage.vercel.app/connect/farcaster>
 
 The flow:
-1. Redirects to Farcaster for authorization (Sign In with Farcaster)
-2. Exchanges code for access token + signer UUID
-3. Stores encrypted credentials under your user id
-4. Uses Neynar API with the signer to cast on your behalf
+1. Page shows "Sign in with Farcaster" button → opens Neynar SIWN modal
+2. User approves in their Farcaster wallet (Warpcast, etc.)
+3. Neynar redirects back to `/connect/farcaster?fid=...&signer_uuid=...`
+4. Frontend POSTs `{ fid, signer_uuid }` to `/api/farcaster/connect`
+5. Backend verifies signer with Neynar, fetches profile, stores encrypted
+6. CLI can now post casts using the signer via Neynar
 
 ---
 

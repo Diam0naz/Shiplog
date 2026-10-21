@@ -1,44 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes } from "node:crypto";
-import { userFromCookie } from "@/lib/session";
-import { authorizeUrl, createPkce, redirectUriFor } from "@/lib/farcaster";
-import { themedError } from "@/lib/oauth-response";
+import { requireUser } from "@/lib/session";
+import { connectFarcaster } from "@/lib/farcaster";
+import { themedError, themedSuccess } from "@/lib/oauth-response";
 
-export async function GET(req: NextRequest) {
-  const user = await userFromCookie(req);
-  if (!user) {
-    return NextResponse.redirect(
-      new URL(
-        `/api/github/connect?next=${encodeURIComponent("/api/farcaster/connect")}`,
-        req.url,
-      ),
-    );
-  }
+/**
+ * Receives { fid, signer_uuid } from the SIWN frontend callback.
+ * Verifies signer with Neynar and stores encrypted connection.
+ */
+export async function POST(req: NextRequest) {
+  const user = await requireUser(req);
+  if (!user)
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  // PKCE: the verifier stays in an httpOnly cookie, only its hash travels to Farcaster.
-  const state = randomBytes(16).toString("hex");
-  const { verifier, challenge } = createPkce();
+  const body = (await req.json().catch(() => ({}))) as { fid?: unknown; signer_uuid?: unknown };
+  const fid = typeof body.fid === "number" ? body.fid : undefined;
+  const signerUuid = typeof body.signer_uuid === "string" ? body.signer_uuid : undefined;
 
-  let url: string;
+  if (!fid || !signerUuid)
+    return NextResponse.json({ error: "missing fid or signer_uuid" }, { status: 400 });
+
   try {
-    url = authorizeUrl(state, challenge, redirectUriFor(req.url));
+    await connectFarcaster(user.id, fid, signerUuid);
+    // Return success — frontend shows themed page
+    return themedSuccess("Farcaster connected", `Farcaster connected as @${fid}.`);
   } catch (e) {
-    return themedError(
-      "Could not start Farcaster login",
-      "Failed to build the Farcaster authorization URL.",
-      e instanceof Error ? e.message : "unknown error",
-      500,
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Failed to connect Farcaster" },
+      { status: 500 },
     );
   }
-
-  const res = NextResponse.redirect(url);
-  const common = {
-    httpOnly: true,
-    sameSite: "lax" as const,
-    maxAge: 600,
-    path: "/",
-  };
-  res.cookies.set("fc_state", state, common);
-  res.cookies.set("fc_verifier", verifier, common);
-  return res;
 }
