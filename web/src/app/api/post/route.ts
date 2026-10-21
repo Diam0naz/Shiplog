@@ -11,15 +11,18 @@ import {
 } from "@/lib/publish";
 import { requireUser } from "@/lib/session";
 import { postToX } from "@/lib/x";
+import { parseImages, type PostImage } from "@/lib/images";
 
+// PUBLISHERS type: add the third argument
 const PUBLISHERS: Record<
   Platform,
-  (userId: string, text: string) => Promise<{ id?: string; url?: string }>
-> = {
-  linkedin: postToLinkedIn,
-  x: postToX,
-  farcaster: postToFarcaster,
-};
+  (
+    userId: string,
+    text: string,
+    images: PostImage[],
+  ) => Promise<{ id?: string; url?: string }>
+> = { linkedin: postToLinkedIn, x: postToX, farcaster: postToFarcaster };
+// (postToX can keep its two-argument signature for now; X posts text only.)
 
 type Result = {
   platform: Platform;
@@ -44,6 +47,11 @@ export async function POST(req: Request) {
 
   if (typeof text !== "string" || !text.trim()) {
     return NextResponse.json({ error: "empty post" }, { status: 400 });
+  }
+
+  const images = parseImages((body as { images?: unknown }).images);
+  if (images === null) {
+    return NextResponse.json({ error: "invalid images" }, { status: 400 });
   }
 
   // With no explicit list, publish everywhere that is connected — the old
@@ -73,7 +81,7 @@ export async function POST(req: Request) {
 
   for (const platform of chosen) {
     try {
-      const out = await PUBLISHERS[platform](user.id, text);
+      const out = await PUBLISHERS[platform](user.id, text, images);
       results.push({ platform, ok: true, id: out.id, url: out.url });
     } catch (e) {
       const message = e instanceof Error ? e.message : "post failed";

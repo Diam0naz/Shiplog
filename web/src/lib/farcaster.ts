@@ -1,5 +1,6 @@
 import { NotConnectedError } from "./publish";
 import { loadFarcaster, saveFarcaster, type FarcasterAuth } from "./tokens";
+import type { PostImage } from "./images";
 
 /**
  * Farcaster integration via Neynar Sign In With Neynar (SIWN).
@@ -24,7 +25,10 @@ import { loadFarcaster, saveFarcaster, type FarcasterAuth } from "./tokens";
 export const FARCASTER_CONNECT_PATH = "/connect/farcaster"; // Frontend page with SIWN button
 
 const apiBase = () =>
-  (process.env.FARCASTER_API_BASE ?? "https://api.neynar.com/v2").replace(/\/$/, "");
+  (process.env.FARCASTER_API_BASE ?? "https://api.neynar.com/v2").replace(
+    /\/$/,
+    "",
+  );
 
 const neynarHeaders = () => {
   const key = process.env.FARCASTER_API_KEY;
@@ -38,7 +42,11 @@ const neynarHeaders = () => {
  * Never trust the browser: confirm with Neynar that the signer is approved
  * and belongs to that fid.
  */
-export async function connectFarcaster(userId: string, fid: number, signerUuid: string) {
+export async function connectFarcaster(
+  userId: string,
+  fid: number,
+  signerUuid: string,
+) {
   // 1. Verify signer is approved and matches the fid
   const sRes = await fetch(
     `${apiBase()}/farcaster/signer?signer_uuid=${encodeURIComponent(signerUuid)}`,
@@ -70,7 +78,9 @@ export async function connectFarcaster(userId: string, fid: number, signerUuid: 
 }
 
 /** Check if a signer is still approved (for polling after SIWN redirect). */
-export async function checkSignerStatus(signerUuid: string): Promise<{ approved: boolean; fid?: number }> {
+export async function checkSignerStatus(
+  signerUuid: string,
+): Promise<{ approved: boolean; fid?: number }> {
   try {
     const sRes = await fetch(
       `${apiBase()}/farcaster/signer?signer_uuid=${encodeURIComponent(signerUuid)}`,
@@ -85,19 +95,31 @@ export async function checkSignerStatus(signerUuid: string): Promise<{ approved:
 }
 
 /** Post a cast using the stored signer. */
-export async function postToFarcaster(userId: string, text: string) {
+export async function postToFarcaster(userId: string, text: string, images: PostImage[] = []) {
   const auth = await loadFarcaster(userId);
   if (!auth)
-    throw new NotConnectedError(`Farcaster not connected. Connect at ${FARCASTER_CONNECT_PATH}`);
+    throw new NotConnectedError(
+      `Farcaster not connected. Connect at ${FARCASTER_CONNECT_PATH}`,
+    );
 
   const res = await fetch(`${apiBase()}/farcaster/cast`, {
     method: "POST",
     headers: neynarHeaders(),
-    body: JSON.stringify({ signer_uuid: auth.signerUuid, text }),
+    body: JSON.stringify({
+      signer_uuid: auth.signerUuid,
+      text,
+      ...(images.length
+        ? { embeds: images.slice(0, 2).map((i) => ({ url: i.url })) }
+        : {}),
+    }),
   });
   const body = (await res.json().catch(() => null)) as any;
-  if (!res.ok) throw new Error(`Farcaster error ${res.status}: ${body?.message ?? body?.detail ?? "unknown"}`);
+  if (!res.ok)
+    throw new Error(
+      `Farcaster error ${res.status}: ${body?.message ?? body?.detail ?? "unknown"}`,
+    );
   const hash = body?.cast?.hash;
-  if (!hash) throw new Error("Farcaster accepted the cast but returned no hash");
+  if (!hash)
+    throw new Error("Farcaster accepted the cast but returned no hash");
   return { id: hash, url: `https://warpcast.com/${auth.username}/${hash}` };
 }

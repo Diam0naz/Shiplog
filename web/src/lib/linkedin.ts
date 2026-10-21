@@ -1,3 +1,4 @@
+import { parseImages, type PostImage } from "@/lib/images";
 import { ExpiredError, NotConnectedError } from "./publish";
 import { loadLinkedIn } from "./tokens";
 
@@ -7,7 +8,54 @@ export const LINKEDIN_CONNECT_PATH = "/api/linkedin/connect";
 const RESERVED = /[\\|{}@\[\]()<>#*_~]/g;
 const escapeCommentary = (s: string) => s.replace(RESERVED, (m) => "\\" + m);
 
-export async function postToLinkedIn(userId: string, text: string) {
+const LI_HEADERS = {
+  "X-Restli-Protocol-Version": "2.0.0",
+  "Linkedin-Version": process.env.LINKEDIN_VERSION ?? "202609",
+};
+
+async function uploadImage(
+  auth: { accessToken: string; personUrn: string },
+  img: PostImage,
+): Promise<{ id: string; altText?: string }> {
+  const src = await fetch(img.url);
+  if (!src.ok) throw new Error(`could not read image (${src.status})`);
+  const bytes = await src.arrayBuffer();
+
+  const init = await fetch(
+    "https://api.linkedin.com/rest/images?action=initializeUpload",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${auth.accessToken}`,
+        "Content-Type": "application/json",
+        ...LI_HEADERS,
+      },
+      body: JSON.stringify({
+        initializeUploadRequest: { owner: auth.personUrn },
+      }),
+    },
+  );
+  if (!init.ok)
+    throw new Error(`LinkedIn image init ${init.status}: ${await init.text()}`);
+  const { value } = (await init.json()) as {
+    value: { uploadUrl: string; image: string };
+  };
+
+  const up = await fetch(value.uploadUrl, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${auth.accessToken}` },
+    body: bytes,
+  });
+  if (!up.ok) throw new Error(`LinkedIn image upload ${up.status}`);
+
+  return { id: value.image, altText: img.alt };
+}
+
+export async function postToLinkedIn(
+  userId: string,
+  text: string,
+  images: PostImage[] = [],
+) {
   const auth = await loadLinkedIn(userId);
   if (!auth)
     throw new NotConnectedError(
@@ -18,13 +66,20 @@ export async function postToLinkedIn(userId: string, text: string) {
       `LinkedIn connection expired. Reconnect at ${LINKEDIN_CONNECT_PATH}`,
     );
 
+  const uploaded = await Promise.all(images.map((i) => uploadImage(auth, i)));
+  const content =
+    uploaded.length === 0
+      ? undefined
+      : uploaded.length === 1
+        ? { media: uploaded[0] }
+        : { multiImage: { images: uploaded } };
+
   const res = await fetch("https://api.linkedin.com/rest/posts", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${auth.accessToken}`,
       "Content-Type": "application/json",
-      "X-Restli-Protocol-Version": "2.0.0",
-      "Linkedin-Version": process.env.LINKEDIN_VERSION ?? "202609",
+      ...LI_HEADERS,
     },
     body: JSON.stringify({
       author: auth.personUrn,
@@ -37,6 +92,7 @@ export async function postToLinkedIn(userId: string, text: string) {
       },
       lifecycleState: "PUBLISHED",
       isReshareDisabledByAuthor: false,
+      ...(content ? { content } : {}),
     }),
   });
 

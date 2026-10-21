@@ -41,6 +41,12 @@ enum Commands {
         /// interactively, or to post to the only connected account.
         #[arg(long, value_name = "TARGETS")]
         to: Option<String>,
+        /// Attach an image (repeatable, max 4; PNG/JPEG/WebP/GIF up to 4 MB)
+        #[arg(long = "image", value_name = "FILE")]
+        image: Vec<PathBuf>,
+        /// Attach a code card rendered from your latest change
+        #[arg(long)]
+        card: bool,
     },
     /// Save sample posts so drafts sound like you
     Voice,
@@ -62,7 +68,7 @@ async fn dispatch(cli: Cli) -> Result<()> {
         Commands::Login => auth::login().await,
         Commands::Connect { platform } => auth::connect(platform).await,
         Commands::Logout => auth::logout().await,
-        Commands::Ship { message, to } => ship::run(message, to).await,
+        Commands::Ship { message, to, image, card } => ship::run(message, to, image, card).await,
         Commands::Voice => voice::run(),
     }
 }
