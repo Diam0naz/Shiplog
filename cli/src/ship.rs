@@ -30,6 +30,7 @@ struct DraftResp {
 enum Platform {
     LinkedIn,
     X,
+    Farcaster,
 }
 
 impl Platform {
@@ -37,6 +38,7 @@ impl Platform {
         match self {
             Platform::LinkedIn => "linkedin",
             Platform::X => "x",
+            Platform::Farcaster => "farcaster",
         }
     }
 
@@ -44,6 +46,7 @@ impl Platform {
         match self {
             Platform::LinkedIn => "LinkedIn",
             Platform::X => "X",
+            Platform::Farcaster => "Farcaster",
         }
     }
 
@@ -51,6 +54,7 @@ impl Platform {
         match self {
             Platform::LinkedIn => format!("{base}/api/linkedin/connect"),
             Platform::X => format!("{base}/api/x/connect"),
+            Platform::Farcaster => format!("{base}/api/farcaster/connect"),
         }
     }
 
@@ -58,12 +62,13 @@ impl Platform {
         match s.trim().to_ascii_lowercase().as_str() {
             "linkedin" => Some(Platform::LinkedIn),
             "x" | "twitter" => Some(Platform::X),
+            "farcaster" | "fc" => Some(Platform::Farcaster),
             _ => None,
         }
     }
 }
 
-const ALL: [Platform; 2] = [Platform::LinkedIn, Platform::X];
+const ALL: [Platform; 3] = [Platform::LinkedIn, Platform::X, Platform::Farcaster];
 
 #[derive(Deserialize)]
 struct Connection {
@@ -74,6 +79,7 @@ struct Connection {
 struct Connections {
     linkedin: Connection,
     x: Connection,
+    farcaster: Connection,
 }
 
 #[derive(Deserialize)]
@@ -124,7 +130,7 @@ fn parse_targets(raw: &str) -> Result<Vec<Platform>> {
         }
     }
     if out.is_empty() {
-        bail!("--to needs at least one of: linkedin, x, all");
+        bail!("--to needs at least one of: linkedin, x, farcaster, all");
     }
     Ok(out)
 }
@@ -153,6 +159,9 @@ async fn fetch_connections(
     }
     if c.x.connected {
         out.push(Platform::X);
+    }
+    if c.farcaster.connected {
+        out.push(Platform::Farcaster);
     }
     Some(out)
 }
@@ -183,9 +192,10 @@ fn choose_targets(
     match connected {
         None => Ok(None), // let the server publish everywhere that is connected
         Some([]) => bail!(
-            "no account connected yet — connect LinkedIn at {} or X at {}",
+            "no account connected yet — connect LinkedIn at {}, X at {}, or Farcaster at {}",
             Platform::LinkedIn.connect_url(base),
-            Platform::X.connect_url(base)
+            Platform::X.connect_url(base),
+            Platform::Farcaster.connect_url(base)
         ),
         Some([only]) => Ok(Some(vec![*only])),
         Some(list) => {

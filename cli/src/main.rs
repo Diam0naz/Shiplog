@@ -23,12 +23,21 @@ struct Cli {
 enum Commands {
     /// Connect your account through the browser
     Login,
+    /// Connect a publishing platform (LinkedIn, X, or Farcaster)
+    #[command(name = "connect")]
+    Connect {
+        /// Platform to connect: linkedin, x, or farcaster
+        #[arg(value_name = "PLATFORM")]
+        platform: Option<String>,
+    },
+    /// Revoke this machine's session and remove the local token
+    Logout,
     /// Draft and post an update from your recent commits
     #[command(name = "post")]
     Ship {
         /// Optional note to guide the draft
         message: Option<String>,
-        /// Where to publish: linkedin, x or all (comma-separated). Omit to pick
+        /// Where to publish: linkedin, x, farcaster, or all (comma-separated). Omit to pick
         /// interactively, or to post to the only connected account.
         #[arg(long, value_name = "TARGETS")]
         to: Option<String>,
@@ -51,6 +60,8 @@ pub fn config_dir() -> Result<PathBuf> {
 async fn dispatch(cli: Cli) -> Result<()> {
     match cli.command {
         Commands::Login => auth::login().await,
+        Commands::Connect { platform } => auth::connect(platform).await,
+        Commands::Logout => auth::logout().await,
         Commands::Ship { message, to } => ship::run(message, to).await,
         Commands::Voice => voice::run(),
     }
