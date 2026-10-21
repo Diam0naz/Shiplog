@@ -121,7 +121,7 @@ export default function Home() {
                 </a>
               </div>
               <p className={styles.platformNote}>
-                Posts to LinkedIn and X today. Bluesky and Farcaster are planned.
+                Posts to LinkedIn, X, and Farcaster. Bluesky is planned.
               </p>
             </div>
             <TerminalDemo />

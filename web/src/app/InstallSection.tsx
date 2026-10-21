@@ -32,7 +32,7 @@ const TABS: Tab[] = [
     id: "brew",
     label: "Homebrew",
     available: false,
-    lines: ["brew install yourorg/tap/shiplog"],
+    lines: ["brew install diam0naz/tap/shiplog"],
     note: "Planned. Not available yet.",
   },
 ];
