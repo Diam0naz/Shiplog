@@ -1,47 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
+import { userFromCookie } from "@/lib/session";
 import { exchangeCode, redirectUriFor } from "@/lib/x";
+import { themedError, themedSuccess } from "@/lib/oauth-response";
 
 export async function GET(req: NextRequest) {
+  const user = await userFromCookie(req);
+  if (!user)
+    return themedError("Sign in required", "Please sign in with GitHub first.", undefined, 401);
+
   const code = req.nextUrl.searchParams.get("code");
   const state = req.nextUrl.searchParams.get("state");
   const verifier = req.cookies.get("x_verifier")?.value;
 
   if (!code || !state || state !== req.cookies.get("x_state")?.value) {
-    return new NextResponse("Invalid state", { status: 400 });
+    return themedError("Invalid state", "The OAuth state parameter is missing or doesn't match. Please try again.");
   }
   if (!verifier) {
-    return new NextResponse(
-      "Missing PKCE verifier — start again at /api/x/connect",
-      { status: 400 },
-    );
+    return themedError("Missing PKCE verifier", "The PKCE verifier cookie is missing. Please start again at /api/x/connect.");
   }
 
   const params = req.nextUrl.searchParams;
   if (params.get("error")) {
-    return new NextResponse(
-      `X declined the authorization: ${params.get("error_description") ?? params.get("error")}`,
-      { status: 400 },
+    return themedError(
+      "Authorization declined",
+      "X declined the authorization request.",
+      params.get("error_description") ?? params.get("error") ?? "Unknown error",
+      400
     );
   }
 
   let username: string | undefined;
   try {
-    const auth = await exchangeCode(code, verifier, redirectUriFor(req.url));
+    const auth = await exchangeCode(user.id, code, verifier, redirectUriFor(req.url));
     username = auth.username;
   } catch (e) {
-    // Covers a failed token exchange, a failed profile lookup, a missing
-    // TOKEN_ENC_KEY, and a non-writable filesystem — all of which must not be
-    // reported as a successful connection.
-    return new NextResponse(
-      `Could not connect X: ${e instanceof Error ? e.message : "unknown error"}`,
-      { status: 500, headers: { "Content-Type": "text/plain" } },
-    );
+    return themedError("Could not connect X", "Failed to complete the X connection.", e instanceof Error ? e.message : "unknown error", 500);
   }
 
-  const res = new NextResponse(
-    `X connected${username ? " as @" + username : ""}. You can close this tab.`,
-    { headers: { "Content-Type": "text/plain" } },
-  );
+  const res = themedSuccess("X connected", `X connected${username ? " as @" + username : ""}.`);
   res.cookies.delete("x_state");
   res.cookies.delete("x_verifier");
   return res;

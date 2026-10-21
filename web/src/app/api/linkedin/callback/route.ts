@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import { userFromCookie } from "@/lib/session";
 import { saveLinkedIn } from "@/lib/tokens";
+import { themedError, themedSuccess } from "@/lib/oauth-response";
 
 export async function GET(req: NextRequest) {
+  const user = await userFromCookie(req);
+  if (!user)
+    return themedError("Sign in required", "Please sign in with GitHub first.", undefined, 401);
+
   const code = req.nextUrl.searchParams.get("code");
   const state = req.nextUrl.searchParams.get("state");
   if (!code || !state || state !== req.cookies.get("li_state")?.value) {
-    return new NextResponse("Invalid state", { status: 400 });
+    return themedError("Invalid state", "The OAuth state parameter is missing or doesn't match. Please try again.");
   }
 
   const tokenRes = await fetch(
@@ -23,9 +29,7 @@ export async function GET(req: NextRequest) {
     },
   );
   if (!tokenRes.ok) {
-    return new NextResponse(`Token exchange failed: ${await tokenRes.text()}`, {
-      status: 502,
-    });
+    return themedError("Token exchange failed", "Failed to exchange the authorization code for an access token.", await tokenRes.text(), 502);
   }
   const tok = await tokenRes.json();
 
@@ -33,34 +37,22 @@ export async function GET(req: NextRequest) {
     headers: { Authorization: `Bearer ${tok.access_token}` },
   });
   if (!infoRes.ok) {
-    return new NextResponse(`Profile lookup failed: ${await infoRes.text()}`, {
-      status: 502,
-    });
+    return themedError("Profile lookup failed", "Failed to fetch your LinkedIn profile.", await infoRes.text(), 502);
   }
   const info = await infoRes.json();
 
   try {
-    await saveLinkedIn({
+    await saveLinkedIn(user.id, {
       accessToken: tok.access_token,
       expiresAt: Date.now() + tok.expires_in * 1000,
       personUrn: `urn:li:person:${info.sub}`,
       name: info.name,
     });
   } catch (e) {
-    // Don't report success when the token could not be persisted (read-only
-    // filesystem on serverless, missing store, bad TOKEN_ENC_KEY, …).
-    return new NextResponse(
-      `Could not store the LinkedIn token: ${
-        e instanceof Error ? e.message : "unknown error"
-      }`,
-      { status: 500, headers: { "Content-Type": "text/plain" } },
-    );
+    return themedError("Could not store token", "Failed to save your LinkedIn connection.", e instanceof Error ? e.message : "unknown error", 500);
   }
 
-  const res = new NextResponse(
-    `LinkedIn connected${info.name ? " as " + info.name : ""}. You can close this tab.`,
-    { headers: { "Content-Type": "text/plain" } },
-  );
+  const res = themedSuccess("LinkedIn connected", `LinkedIn connected${info.name ? " as " + info.name : ""}.`);
   res.cookies.delete("li_state");
   return res;
 }
