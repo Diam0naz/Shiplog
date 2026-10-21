@@ -7,8 +7,8 @@ export const LINKEDIN_CONNECT_PATH = "/api/linkedin/connect";
 const RESERVED = /[\\|{}@\[\]()<>#*_~]/g;
 const escapeCommentary = (s: string) => s.replace(RESERVED, (m) => "\\" + m);
 
-export async function postToLinkedIn(text: string) {
-  const auth = await loadLinkedIn();
+export async function postToLinkedIn(userId: string, text: string) {
+  const auth = await loadLinkedIn(userId);
   if (!auth)
     throw new NotConnectedError(
       `LinkedIn not connected. Connect at ${LINKEDIN_CONNECT_PATH}`,

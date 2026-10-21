@@ -93,6 +93,7 @@ async function tokenRequest(body: URLSearchParams) {
 }
 
 export async function exchangeCode(
+  userId: string,
   code: string,
   verifier: string,
   redirectUri: string,
@@ -126,12 +127,12 @@ export async function exchangeCode(
     userId: me.data.id,
     username: me.data.username,
   };
-  await saveX(auth);
+  await saveX(userId, auth);
   return auth;
 }
 
 /** Refreshes an expired access token and persists the rotated pair. */
-async function refresh(auth: XAuth) {
+async function refresh(userId: string, auth: XAuth) {
   if (!auth.refreshToken)
     throw new ExpiredError(
       `X connection expired. Reconnect at ${X_CONNECT_PATH}`,
@@ -150,7 +151,7 @@ async function refresh(auth: XAuth) {
       refreshToken: tok.refresh_token ?? auth.refreshToken,
       expiresAt: Date.now() + (tok.expires_in ?? 7200) * 1000,
     };
-    await saveX(next);
+    await saveX(userId, next);
     return next;
   } catch (e) {
     throw new ExpiredError(
@@ -161,16 +162,16 @@ async function refresh(auth: XAuth) {
   }
 }
 
-export async function freshToken() {
-  let auth = await loadX();
+export async function freshToken(userId: string) {
+  let auth = await loadX(userId);
   if (!auth)
     throw new NotConnectedError(`X not connected. Connect at ${X_CONNECT_PATH}`);
-  if (Date.now() >= auth.expiresAt - 60_000) auth = await refresh(auth);
+  if (Date.now() >= auth.expiresAt - 60_000) auth = await refresh(userId, auth);
   return auth;
 }
 
-export async function postToX(text: string) {
-  const auth = await freshToken();
+export async function postToX(userId: string, text: string) {
+  const auth = await freshToken(userId);
   const res = await fetch(`${apiBase()}/2/tweets`, {
     method: "POST",
     headers: {

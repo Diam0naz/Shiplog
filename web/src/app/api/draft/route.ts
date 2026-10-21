@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/session";
 
 const BASE_URL = process.env.LLM_BASE_URL;
 const API_KEY = process.env.LLM_API_KEY;
@@ -48,9 +49,9 @@ async function generate(messages: { role: string; content: string }[]) {
 }
 
 export async function POST(req: Request) {
-  if (req.headers.get("authorization") !== "Bearer dev-token-123") {
+  if (!(await requireUser(req)))
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+
   const { commits, note, voice } = await req.json();
 
   if (!BASE_URL || !MODEL) {
