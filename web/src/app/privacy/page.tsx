@@ -26,11 +26,25 @@ export default function PrivacyPage() {
         service only sees what the CLI sends it when you ask for a draft or approve a post.
       </p>
 
+      <h2>Signing in</h2>
+      <p>
+        To use the hosted service you sign in with GitHub. The service receives your GitHub numeric
+        id, username, display name and avatar URL, and requests only the <code>read:user</code>
+        scope — it cannot read your repositories. GitHub sees that you signed in to this
+        application, subject to GitHub&apos;s own privacy policy.
+      </p>
+      <p>
+        The browser session is held in an httpOnly <code>ship_session</code> cookie and expires after
+        90 days. The CLI receives a separate session token after you approve the login; the server
+        stores only its SHA-256 hash, never the token itself, and <code>shiplog logout</code>
+        revokes it immediately.
+      </p>
+
       <h2>What stays on your machine</h2>
       <ul>
         <li>
           <strong>Session token</strong> — <code>~/.config/shiplog/credentials.json</code>, created
-          with owner-only permissions.
+          with owner-only permissions and revoked by <code>shiplog logout</code>.
         </li>
         <li>
           <strong>Voice samples</strong> — <code>~/.config/shiplog/voice.txt</code>, the posts you
@@ -73,21 +87,28 @@ export default function PrivacyPage() {
 
       <h2>What the service stores</h2>
       <p>
-        The service does not keep accounts, drafts or commit data in a database. Two things are
-        persisted:
+        There is no database and no copy of your commits or drafts. These records are persisted, all
+        as JSON in a private Vercel Blob store (or in <code>web/.data/shiplog/</code> when you run
+        the service locally):
       </p>
       <ul>
         <li>
-          <strong>Your publishing tokens</strong> — a LinkedIn access token and an X access token
-          together with its refresh token — each encrypted with AES-256-GCM before it is written. On
-          a deployment they live in private Vercel Blobs; when you run the service locally they are
-          written to <code>web/.data/linkedin.json</code> and <code>web/.data/x.json</code>. The
-          encryption key is held in the server environment, and no token is ever sent to your
-          browser.
+          <strong>Your account</strong> — GitHub id, username, display name, avatar URL and the date
+          the account was first seen.
         </li>
         <li>
-          <strong>Short-lived OAuth state</strong>, in the <code>li_state</code>, <code>x_state</code>
-          and <code>x_verifier</code> cookies described below.
+          <strong>Session and CLI-code hashes</strong> — the SHA-256 digest of each session token and
+          of each single-use login code, with its expiry. The tokens themselves are not stored, so
+          the stored data cannot be replayed against the API.
+        </li>
+        <li>
+          <strong>Your publishing tokens</strong> — a LinkedIn access token and an X access token
+          together with its refresh token, stored under your user id and encrypted with AES-256-GCM
+          before they are written. The encryption key is held in the server environment, and no
+          platform token is ever sent to your browser.
+        </li>
+        <li>
+          <strong>Short-lived OAuth state</strong>, in the cookies described below.
         </li>
       </ul>
       <p>
@@ -113,12 +134,12 @@ export default function PrivacyPage() {
 
       <h2>Cookies</h2>
       <p>
-        The service sets cookies only while you connect an account: <code>li_state</code> for
-        LinkedIn, and <code>x_state</code> plus <code>x_verifier</code> for X. They are
-        <code>httpOnly</code>, <code>SameSite=Lax</code>, expire after 10 minutes and exist only to
-        protect the OAuth redirect against cross-site request forgery (and, on X, to hold the PKCE
-        verifier until the callback). There are no analytics, advertising or tracking cookies on
-        this site or in the CLI.
+        Two kinds of cookie exist, both <code>httpOnly</code> and <code>SameSite=Lax</code>.
+        <code>ship_session</code> keeps you signed in to the website for up to 90 days.
+        <code>gh_state</code>, <code>gh_next</code>, <code>li_state</code>, <code>x_state</code> and
+        <code>x_verifier</code> live for 10 minutes and exist only to protect an OAuth redirect
+        against cross-site request forgery and to carry the pending destination or PKCE verifier.
+        There are no analytics, advertising or tracking cookies on this site or in the CLI.
       </p>
 
       <h2>Who else is involved</h2>
@@ -126,6 +147,9 @@ export default function PrivacyPage() {
         <li>
           <strong>Hosting and storage</strong> — the site and its API run on Vercel, which also holds
           the encrypted LinkedIn and X tokens.
+        </li>
+        <li>
+          <strong>GitHub</strong> — to sign you in, with the <code>read:user</code> scope only.
         </li>
         <li>
           <strong>Model provider</strong> — whichever provider the operator of this instance
@@ -143,8 +167,14 @@ export default function PrivacyPage() {
       <h2>Keeping and deleting your data</h2>
       <ul>
         <li>
-          Each token is kept until you replace it by connecting again, or until it is removed from
-          the storage described above. Connecting one platform never overwrites the other.
+          Each platform token is kept until you replace it by connecting again, or until it is
+          removed from the storage described above. Connecting one platform never overwrites the
+          other, and no other user can read or use yours.
+        </li>
+        <li>
+          Your account record and session hashes are kept while the account is in use. Sessions
+          expire after 90 days, and <code>shiplog logout</code> revokes the token it was called
+          with immediately.
         </li>
         <li>
           On your own machine, delete <code>~/.config/shiplog/</code> to remove the session and voice
@@ -155,10 +185,11 @@ export default function PrivacyPage() {
 
       <h2>Security</h2>
       <p>
-        Requests travel over HTTPS, both tokens are encrypted at rest, and the CLI stores its
-        session token with owner-only permissions. No system is perfectly secure, so treat your
-        LinkedIn and X access as you would any other credential and revise it in the platform&apos;s
-        settings if you stop using shiplog.
+        Requests travel over HTTPS, platform tokens are encrypted at rest, and only hashes of
+        sessions and login codes are stored. The CLI keeps its session token with owner-only
+        permissions. No system is perfectly secure, so treat your LinkedIn and X access as you
+        would any other credential and revise it in the platform&apos;s settings if you stop using
+        shiplog.
       </p>
 
       <h2>Children</h2>

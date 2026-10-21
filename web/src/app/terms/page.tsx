@@ -29,13 +29,19 @@ export default function TermsPage() {
       <h2>2. What shiplog does</h2>
       <p>
         shiplog reads the commits you have made since your last post, drafts a short update, and
-        publishes it to a connected account — but only after you explicitly approve the text. You
-        choose <strong>Post</strong>, <strong>Edit</strong> or <strong>Skip</strong> every time.
+        publishes it to a connected account that belongs to you — but only after you explicitly
+        approve the text. You choose <strong>Post</strong>, <strong>Edit</strong> or
+        <strong>Skip</strong> every time. The hosted service identifies you through your GitHub
+        account and stores at most one LinkedIn and one X connection per user.
       </p>
 
       <h2>3. Who may use it</h2>
       <ul>
-        <li>You must be at least 13 years old.</li>
+        <li>You must be at least 13 years old, and old enough to hold a GitHub account.</li>
+        <li>
+          To use the hosted service you need a GitHub account, and you must be entitled to use it.
+          shiplog requests only the <code>read:user</code> scope and never reads your repositories.
+        </li>
         <li>
           You must have the right to publish from any account you connect, and your use of that
           account must comply with its own rules — including the user agreement and developer terms
@@ -82,8 +88,9 @@ export default function TermsPage() {
 
       <h2>7. Third-party services</h2>
       <p>
-        shiplog depends on services it does not control: LinkedIn and X for publishing, Vercel for
-        hosting and storage, and the model provider configured for this instance. Their terms and privacy
+        shiplog depends on services it does not control: GitHub for signing in, LinkedIn and X for
+        publishing, Vercel for hosting and storage, and the model provider configured for this
+        instance. Their terms and privacy
         policies apply to your use of them, and they may change or fail without notice. shiplog is
         not responsible for their availability, decisions or content.
       </p>
@@ -113,8 +120,10 @@ export default function TermsPage() {
 
       <h2>11. Ending use</h2>
       <p>
-        You may stop at any time by disconnecting the account and deleting your local configuration.
-        The operator may suspend or end access for behaviour that breaches these terms.
+        You may stop at any time: run <code>shiplog logout</code> to revoke this machine&apos;s
+        session, disconnect the platform accounts you connected, and delete your local
+        configuration. The operator may suspend or end access for behaviour that breaches these
+        terms.
       </p>
 
       <h2>12. Governing law</h2>
