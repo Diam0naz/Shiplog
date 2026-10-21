@@ -459,3 +459,59 @@ checkable in a way reading the code is not:
 The same mock proves the failure paths: bad state stores nothing, a missing
 token returns `409` with the connect URL, and 281 characters is rejected before
 LinkedIn is contacted.
+
+---
+
+## 2026-10-20 — Real accounts
+
+### 20. The stub could not be patched into a multi-user design
+
+`dev-code` / `dev-token-123` was one global constant checked in four places, and
+the platform tokens were two global files. Even with a real login in front of
+it, the second user to connect LinkedIn would take over the first user's
+account. The fix had to introduce an identity and key everything to it, so the
+auth work and the storage work are the same change:
+
+| Before | After |
+|---|---|
+| `/api/cli/token` accepts the literal `dev-code` | accepts a hashed, single-use code bound to a user |
+| `Authorization === "Bearer dev-token-123"` | `requireUser(req)` → session record → user |
+| `shiplog/linkedin-token.json` | `shiplog/users/<github-id>/linkedin-token.json` |
+
+GitHub was the identity because the audience already has it and `read:user` is
+the smallest possible scope. The GitHub access token is used once to read the
+profile and then discarded; the credential the CLI keeps is the service's own
+session token.
+
+### 21. Store hashes, not tokens, and delete single-use codes before returning
+
+Session tokens are 48 random bytes; only `sha256(token)` is written, at the
+path `sessions/<hash>.json`. Lookup is by path, so there is no comparison to get
+wrong and no way to recover a token from the store. CLI codes work the same way
+and are deleted *before* the expiry check — otherwise a crash between check and
+delete leaves a replayable code.
+
+Two consequences worth remembering:
+
+- every verified request would otherwise be a write (to update `lastUsedAt`), so
+  the touch is throttled to once an hour;
+- a raw token can never be shown again, which is why `/api/cli/token` returns it
+  once and nothing else in the system can.
+
+### 22. A redirecting page is not a redirect
+
+`/cli/login` started as a Server Component that called `redirect()`. The build
+passed, and `curl` got **200** with an `__next_error__` body: with Cache
+Components/PPR, the redirect happens inside the postponed part and is delivered
+to the client as an RSC payload (`NEXT_REDIRECT;replace;…;307`). A browser would
+follow it; the CLI's plain HTTP client cannot.
+
+A redirect that must be a real 307 belongs in a route handler, which is never
+prerendered. `/cli/login` is now `app/cli/login/route.ts`, and it does the whole
+job: 307 to GitHub when signed out, 307 to `127.0.0.1:<port>` with a code when
+signed in. This is also why the intermediate `/api/cli/approve` route no longer
+exists — one request, one decision.
+
+Also: deleting a page and adding a route in the same segment leaves stale
+generated types in `.next` (`Cannot find module …/page.js`). `rm -rf .next`
+before the rebuild.
