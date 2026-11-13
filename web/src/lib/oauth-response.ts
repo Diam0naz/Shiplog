@@ -4,13 +4,19 @@ import { NextResponse } from "next/server";
  * Shared themed HTML response for OAuth callback pages.
  * Matches the app's design system (paper/card/ink/yellow/sea).
  */
+/** Escape text before it goes into the HTML template. */
+const esc = (s: string) =>
+  s.replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!,
+  );
+
 function themedResponse(
   title: string,
   message: string,
   status: number = 200,
-  options: { showClose?: boolean; isError?: boolean } = {}
+  options: { showClose?: boolean; isError?: boolean; details?: string } = {}
 ): NextResponse {
-  const { showClose = true, isError = false } = options;
+  const { showClose = true, isError = false, details } = options;
   const accentColor = isError ? "var(--coral, #e85d5d)" : "var(--sea, #1b7461)";
   const accentBg = isError ? "color-mix(in srgb, var(--coral, #e85d5d) 15%, transparent)" : "color-mix(in srgb, var(--sea, #1b7461) 15%, transparent)";
 
@@ -158,8 +164,9 @@ function themedResponse(
 <body>
   <div class="card">
     <div class="icon">${isError ? "✕" : "✓"}</div>
-    <h1>${title}</h1>
-    <p>${message}</p>
+    <h1>${esc(title)}</h1>
+    <p>${esc(message)}</p>
+    ${details ? `<div class="details">${esc(details)}</div>` : ''}
     ${showClose ? '<p class="close-hint">You can close this tab and return to the CLI.</p>' : ''}
     <div class="brand">shiplog</div>
   </div>
@@ -176,7 +183,7 @@ function themedResponse(
  * Error response with themed page.
  */
 function themedError(title: string, message: string, details?: string, status: number = 400): NextResponse {
-  return themedResponse(title, message, status, { isError: true, showClose: true });
+  return themedResponse(title, message, status, { isError: true, showClose: true, details });
 }
 
 /**

@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
   const common = {
     httpOnly: true,
     sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
     maxAge: 600,
     path: "/",
   };

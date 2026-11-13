@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "@/app/page.module.css";
 
@@ -14,39 +14,57 @@ export default function FarcasterConnectClient() {
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  // window is undefined during server render. A lazy initializer keeps this out
+  // of the render body (so it can't crash on the server) while avoiding a
+  // setState-in-effect; the page's Suspense boundary renders a fallback on the
+  // server, so the client is the only place this component's body runs for real.
+  const [siwnUrl] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const appId = process.env.NEXT_PUBLIC_NEYNAR_APP_ID ?? "your-app-id";
+    const redirect = encodeURIComponent(
+      window.location.origin + "/connect/farcaster",
+    );
+    return `https://siwn.neynar.com/?app_id=${appId}&redirect_uri=${redirect}`;
+  });
 
-  // Handle Neynar redirect back with fid + signer_uuid
+  const handleCallback = useCallback(
+    async (fid: number, signerUuid: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/farcaster/connect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fid, signer_uuid: signerUuid }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error ?? `Failed (${res.status})`);
+        }
+        // Success — show confirmation and redirect
+        setDone(true);
+        setLoading(false);
+        setTimeout(() => router.push("/"), 1500);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Connection failed");
+        setLoading(false);
+      }
+    },
+    [router],
+  );
+
+  // Handle Neynar's redirect back with fid + signer_uuid. Firing the request
+  // (which sets loading/error state) in response to the URL is the intended
+  // behaviour here, so the set-state-in-effect guard is disabled for it.
   useEffect(() => {
     const fid = searchParams.get("fid");
     const signerUuid = searchParams.get("signer_uuid");
     if (fid && signerUuid) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       handleCallback(Number(fid), signerUuid);
     }
-  }, [searchParams, router]);
-
-  async function handleCallback(fid: number, signerUuid: string) {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/farcaster/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fid, signer_uuid: signerUuid }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? `Failed (${res.status})`);
-      }
-      // Success — show confirmation and redirect
-      setTimeout(() => router.push("/"), 1500);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Connection failed");
-      setLoading(false);
-    }
-  }
-
-  // Neynar SIWN URL — replace with your actual Neynar app ID
-  const siwnUrl = `https://siwn.neynar.com/?app_id=${process.env.NEXT_PUBLIC_NEYNAR_APP_ID ?? "your-app-id"}&redirect_uri=${encodeURIComponent(window.location.origin + "/connect/farcaster")}`;
+  }, [searchParams, handleCallback]);
 
   return (
     <div className={styles.page} style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "40px" }}>
@@ -56,7 +74,7 @@ export default function FarcasterConnectClient() {
           Sign in with your Farcaster account to enable posting.
         </p>
 
-        {!loading && !error && (
+        {!loading && !error && !done && siwnUrl && (
           <a
             href={siwnUrl}
             className={styles.btn}
@@ -93,7 +111,7 @@ export default function FarcasterConnectClient() {
           </div>
         )}
 
-        {loading && !error && (
+        {done && !error && (
           <div style={{ marginTop: "1.5rem", color: "var(--sea, #1b7461)" }}>
             ✓ Connected! Redirecting...
           </div>

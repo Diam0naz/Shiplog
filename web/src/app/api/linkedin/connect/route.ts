@@ -21,10 +21,11 @@ export async function GET(req: NextRequest) {
     client_id: process.env.LINKEDIN_CLIENT_ID!,
     redirect_uri: process.env.LINKEDIN_REDIRECT_URI!,
     state,
-    // Requires "Sign In with LinkedIn" product approval
-    scope: "openid profile",
-    // Add "w_member_social" after "Share on LinkedIn" is approved
-    // scope: "openid profile w_member_social",
+    // openid + profile identify the member; w_member_social is what lets the
+    // app publish on their behalf. Posting fails without it, so it is required
+    // here — the LinkedIn app needs both "Sign In with LinkedIn using OpenID
+    // Connect" and "Share on LinkedIn" products approved.
+    scope: "openid profile w_member_social",
   });
   const res = NextResponse.redirect(`https://www.linkedin.com/oauth/v2/authorization?${params}`);
   res.cookies.set("li_state", state, { httpOnly: true, sameSite: "lax", maxAge: 600, path: "/" });

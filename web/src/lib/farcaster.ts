@@ -113,7 +113,11 @@ export async function postToFarcaster(userId: string, text: string, images: Post
         : {}),
     }),
   });
-  const body = (await res.json().catch(() => null)) as any;
+  const body = (await res.json().catch(() => null)) as {
+    cast?: { hash?: string };
+    message?: string;
+    detail?: string;
+  } | null;
   if (!res.ok)
     throw new Error(
       `Farcaster error ${res.status}: ${body?.message ?? body?.detail ?? "unknown"}`,
@@ -121,5 +125,7 @@ export async function postToFarcaster(userId: string, text: string, images: Post
   const hash = body?.cast?.hash;
   if (!hash)
     throw new Error("Farcaster accepted the cast but returned no hash");
-  return { id: hash, url: `https://warpcast.com/${auth.username}/${hash}` };
+  // Warpcast permalinks use the short form of the cast hash.
+  const shortHash = hash.slice(0, 10);
+  return { id: hash, url: `https://warpcast.com/${auth.username}/${shortHash}` };
 }

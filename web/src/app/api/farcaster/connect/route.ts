@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser } from "@/lib/session";
+import { userFromCookie } from "@/lib/session";
 import { connectFarcaster } from "@/lib/farcaster";
-import { themedError, themedSuccess } from "@/lib/oauth-response";
 
 /**
  * Receives { fid, signer_uuid } from the SIWN frontend callback.
  * Verifies signer with Neynar and stores encrypted connection.
+ *
+ * This is a browser-driven flow: the SIWN page fetches this route with the
+ * session cookie, not a bearer token, so it authenticates by cookie like the
+ * LinkedIn and X connect routes.
  */
 export async function POST(req: NextRequest) {
-  const user = await requireUser(req);
+  const user = await userFromCookie(req);
   if (!user)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
@@ -20,9 +23,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "missing fid or signer_uuid" }, { status: 400 });
 
   try {
-    await connectFarcaster(user.id, fid, signerUuid);
-    // Return success — frontend shows themed page
-    return themedSuccess("Farcaster connected", `Farcaster connected as @${fid}.`);
+    const auth = await connectFarcaster(user.id, fid, signerUuid);
+    // Consumed by fetch() on the SIWN page, so return JSON, not HTML.
+    return NextResponse.json({ ok: true, username: auth.username });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to connect Farcaster" },

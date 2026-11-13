@@ -54,6 +54,10 @@ export async function POST(req: Request) {
 
   const { commits, note, voice } = await req.json();
 
+  if (!Array.isArray(commits) || commits.length === 0) {
+    return NextResponse.json({ error: "no commits" }, { status: 400 });
+  }
+
   if (!BASE_URL || !MODEL) {
     return NextResponse.json({ draft: templateDraft(commits, note) });
   }

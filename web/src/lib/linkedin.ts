@@ -1,4 +1,4 @@
-import { parseImages, type PostImage } from "@/lib/images";
+import { type PostImage } from "@/lib/images";
 import { ExpiredError, NotConnectedError } from "./publish";
 import { loadLinkedIn } from "./tokens";
 

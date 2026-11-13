@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Old landing page kept for reference only; not shipped (and gitignored).
+    "src/_old_frontend/**",
   ]),
 ]);
 

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { userFromCookie } from "@/lib/session";
 import { exchangeCode, redirectUriFor } from "@/lib/x";
 import { themedError, themedSuccess } from "@/lib/oauth-response";

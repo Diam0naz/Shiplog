@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { userFromCookie } from "@/lib/session";
 import { saveLinkedIn } from "@/lib/tokens";
 import { themedError, themedSuccess } from "@/lib/oauth-response";
@@ -44,7 +44,9 @@ export async function GET(req: NextRequest) {
   try {
     await saveLinkedIn(user.id, {
       accessToken: tok.access_token,
-      expiresAt: Date.now() + tok.expires_in * 1000,
+      // LinkedIn tokens last ~60 days; fall back to that if expires_in is absent
+      // so expiresAt is never NaN (which would read as "never expires").
+      expiresAt: Date.now() + (tok.expires_in ?? 60 * 24 * 60 * 60) * 1000,
       personUrn: `urn:li:person:${info.sub}`,
       name: info.name,
     });
