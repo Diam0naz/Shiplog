@@ -333,10 +333,13 @@ Set the variables from the table above in the Vercel project (dashboard or
 |---|---|---|
 | `SHIPLOG_WEB` | `http://localhost:3000` | Base URL of the web app |
 | `NO_COLOR` | unset | Set to any non-empty value to disable colour |
+| `SHIPLOG_NO_ANIM` | unset | Set to any value to draw the startup wordmark once, without the gradient animation |
 | `SHIPLOG_DEBUG` | unset | Print the full error cause chain |
 
 Colour and the banner are also skipped automatically when output is not a
-terminal, so `shiplog post | tee log` stays plain text.
+terminal, so `shiplog post | tee log` stays plain text. The startup wordmark
+animates a gradient sweep over a water line; set `SHIPLOG_NO_ANIM` to render it
+as a single static frame.
 
 ### Where state lives
 
