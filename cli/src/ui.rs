@@ -96,9 +96,9 @@ const TAGLINE: &str = "turn your commits into posts";
 const YELLOW: (u8, u8, u8) = (245, 197, 24);
 const WHITE: (u8, u8, u8) = (236, 239, 243);
 const GREY: (u8, u8, u8) = (150, 160, 172);
-const NAVY: (u8, u8, u8) = (46, 70, 104);
-const SEA: (u8, u8, u8) = (27, 116, 97);
-const BORDER: (u8, u8, u8) = (70, 92, 116);
+const NAVY: (u8, u8, u8) = (66, 104, 170);
+const SEA: (u8, u8, u8) = (30, 170, 150);
+const BORDER: (u8, u8, u8) = (56, 118, 126);
 
 /// Content rows inside the terminal panel (height of every scene).
 const CH: usize = 5;
@@ -123,18 +123,20 @@ fn wordmark_rows() -> [String; 5] {
     })
 }
 
-/// 3-stop brand gradient (yellow → coral → sea), with `t` in `0..=1`.
+/// Vivid multi-stop spectrum (gold → coral → pink → periwinkle → teal), with
+/// `t` in `0..=1`. Gold and teal anchor it to the brand; the stops between make
+/// the wordmark read as clearly multicoloured rather than a flat wash.
 fn gradient(t: f32) -> (u8, u8, u8) {
-    let yellow = (245.0, 197.0, 24.0);
-    let coral = (232.0, 93.0, 93.0);
-    let sea = (27.0, 116.0, 97.0);
-    let (a, b, u) = if t < 0.5 {
-        (yellow, coral, t * 2.0)
-    } else {
-        (coral, sea, (t - 0.5) * 2.0)
-    };
-    let mix = |x: f32, y: f32| (x + (y - x) * u) as u8;
-    (mix(a.0, b.0), mix(a.1, b.1), mix(a.2, b.2))
+    const STOPS: [(u8, u8, u8); 5] = [
+        (245, 197, 24),  // gold
+        (247, 118, 62),  // coral/orange
+        (233, 92, 158),  // pink
+        (124, 124, 236), // periwinkle
+        (36, 196, 164),  // teal
+    ];
+    let t = t.clamp(0.0, 1.0) * (STOPS.len() - 1) as f32;
+    let i = (t.floor() as usize).min(STOPS.len() - 2);
+    lerp(STOPS[i], STOPS[i + 1], t - i as f32)
 }
 
 fn lerp(a: (u8, u8, u8), b: (u8, u8, u8), t: f32) -> (u8, u8, u8) {
@@ -169,7 +171,7 @@ fn word_grid(w: usize, sweep: f32) -> Grid {
             let p = (i as f32 + r as f32 * 1.5) / span;
             let base = gradient(p.clamp(0.0, 1.0));
             let band = (1.0 - (p - sweep).abs() / 0.16).max(0.0);
-            put(&mut g, r, off + i, '█', lerp(base, (245, 245, 255), band * 0.85));
+            put(&mut g, r, off + i, '█', lerp(base, (255, 255, 255), band * 0.9));
         }
     }
     g
@@ -216,14 +218,14 @@ fn ship_grid(w: usize, phase: f32) -> Grid {
             } else if ch == '▌' {
                 GREY // mast
             } else {
-                lerp(YELLOW, WHITE, r as f32 / 3.0) // sail, warm at the top
+                lerp(YELLOW, (247, 118, 62), r as f32 / 3.0) // sail: gold → coral
             };
             put(&mut g, r, off + 1 + i, ch, rgb);
         }
     }
     for c in 0..fw {
-        let t = ((c as f32 * 0.7 + phase).sin() * 0.5 + 0.5) * 0.6;
-        put(&mut g, 4, off + c, '~', lerp(SEA, (120, 200, 230), t));
+        let t = (c as f32 * 0.7 + phase).sin() * 0.5 + 0.5;
+        put(&mut g, 4, off + c, '~', lerp(SEA, (120, 230, 245), t));
     }
     g
 }
@@ -272,7 +274,7 @@ fn draw_panel(g: &Grid, w: usize) {
         bc("│"),
         dots,
         " ".repeat(gap),
-        "shiplog".truecolor(140, 160, 176).bold(),
+        "shiplog".truecolor(245, 197, 24).bold(),
         bc("│"),
     ));
     out.push_str(&format!("{}{}{}\x1b[K\n", bc("├"), bc(&bar), bc("┤")));
@@ -371,7 +373,7 @@ fn tagline(w: usize) {
     println!(
         "{}{}",
         " ".repeat(pad),
-        TAGLINE.truecolor(120, 139, 150).italic()
+        TAGLINE.truecolor(90, 200, 175).italic()
     );
     println!();
 }
