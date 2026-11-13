@@ -322,6 +322,7 @@ Set the variables from the table above in the Vercel project (dashboard or
 | Command | What it does |
 |---|---|
 | `shiplog login` | GitHub sign-in through the browser; writes the session token to disk |
+| `shiplog status` | Shows web-app reachability, who you're signed in as, connected accounts, and how many commits are waiting since your last post |
 | `shiplog logout` | Revokes the session on the server and deletes the local token |
 | `shiplog post [MESSAGE] [--to TARGETS]` | Draft from recent commits, then Post / Edit / Skip. `--to` is `linkedin`, `x`, `all`, or a comma-separated list |
 | `shiplog voice` | Edit the voice samples used to steer drafts |

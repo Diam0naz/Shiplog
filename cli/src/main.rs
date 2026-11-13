@@ -1,5 +1,6 @@
 mod auth;
 mod ship;
+mod status;
 mod ui;
 mod voice;
 
@@ -30,6 +31,8 @@ enum Commands {
         #[arg(value_name = "PLATFORM")]
         platform: Option<String>,
     },
+    /// Show login, connected accounts, and commits waiting since your last post
+    Status,
     /// Revoke this machine's session and remove the local token
     Logout,
     /// Draft and post an update from your recent commits
@@ -67,6 +70,7 @@ async fn dispatch(cli: Cli) -> Result<()> {
     match cli.command {
         Commands::Login => auth::login().await,
         Commands::Connect { platform } => auth::connect(platform).await,
+        Commands::Status => status::run().await,
         Commands::Logout => auth::logout().await,
         Commands::Ship { message, to, image, card } => ship::run(message, to, image, card).await,
         Commands::Voice => voice::run(),
