@@ -13,6 +13,55 @@ use crate::ui;
 #[derive(Deserialize)]
 struct Me {
     login: String,
+    #[serde(default)]
+    streak: Option<Streak>,
+}
+
+#[derive(Deserialize)]
+struct Streak {
+    weeks: u32,
+    #[serde(rename = "shippedThisWeek")]
+    shipped_this_week: bool,
+}
+
+/// After a successful post, fetch and show the (now updated) streak — the
+/// payoff moment. Best-effort: silent on any failure.
+pub async fn show_after_post(client: &reqwest::Client, base: &str, token: &str) {
+    let Ok(resp) = client
+        .get(format!("{base}/api/session"))
+        .bearer_auth(token)
+        .send()
+        .await
+    else {
+        return;
+    };
+    if !resp.status().is_success() {
+        return;
+    }
+    if let Ok(me) = resp.json::<Me>().await
+        && let Some(s) = &me.streak
+    {
+        ui::blank();
+        streak_line(s);
+    }
+}
+
+/// Renders the shipping streak as a status line: a count, a short bar, and a
+/// nudge when the streak is alive but you haven't shipped this week yet.
+fn streak_line(s: &Streak) {
+    if s.weeks == 0 {
+        ui::info("No active streak — post to start one.");
+        return;
+    }
+    let bar = "▰".repeat(s.weeks.min(12) as usize);
+    if s.shipped_this_week {
+        ui::ok(&format!("{bar}  {}-week shipping streak", s.weeks));
+    } else {
+        ui::warn(&format!(
+            "{bar}  {}-week streak — ship this week to keep it going",
+            s.weeks
+        ));
+    }
 }
 
 #[derive(Deserialize)]
@@ -75,7 +124,12 @@ async fn session_and_accounts(client: &reqwest::Client, base: &str, token: &str)
         .await
     {
         Ok(r) if r.status().is_success() => match r.json::<Me>().await {
-            Ok(me) => ui::ok(&format!("Logged in as {}", me.login)),
+            Ok(me) => {
+                ui::ok(&format!("Logged in as {}", me.login));
+                if let Some(s) = &me.streak {
+                    streak_line(s);
+                }
+            }
             Err(_) => ui::ok("Logged in"),
         },
         Ok(r) if r.status() == reqwest::StatusCode::UNAUTHORIZED => {

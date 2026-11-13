@@ -812,6 +812,7 @@ pub async fn run(
                     std::fs::rename(&tmp, &marker)?;
                 }
 
+                crate::status::show_after_post(&client, &base, &token).await;
                 return Ok(());
             }
             OPT_EDIT => {

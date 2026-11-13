@@ -10,6 +10,7 @@ import {
   type Platform,
 } from "@/lib/publish";
 import { requireUser } from "@/lib/session";
+import { recordShip } from "@/lib/streak";
 import { postToX } from "@/lib/x";
 import { parseImages, type PostImage } from "@/lib/images";
 
@@ -100,6 +101,16 @@ export async function POST(req: Request) {
 
   if (results.length === 0) {
     return NextResponse.json({ error: usage(origin) }, { status: 409 });
+  }
+
+  // A shipped post counts toward the streak. Best-effort: never fail a
+  // successful publish because the streak log couldn't be written.
+  if (results.some((r) => r.ok)) {
+    try {
+      await recordShip(user.id);
+    } catch (e) {
+      console.error("recordShip failed", e);
+    }
   }
 
   const failed = results.filter((r) => !r.ok);

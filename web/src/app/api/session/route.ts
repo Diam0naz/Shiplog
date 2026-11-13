@@ -5,16 +5,19 @@ import {
   requireUser,
   userFromToken,
 } from "@/lib/session";
+import { getStreak } from "@/lib/streak";
 
-/** `shiplog status` — who the current bearer token belongs to. */
+/** `shiplog status` — who the current bearer token belongs to, plus streak. */
 export async function GET(req: Request) {
   const user = await requireUser(req);
   if (!user)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const streak = await getStreak(user.id).catch(() => null);
   return NextResponse.json({
     login: user.login,
     name: user.name ?? null,
     avatarUrl: user.avatarUrl ?? null,
+    streak,
   });
 }
 
