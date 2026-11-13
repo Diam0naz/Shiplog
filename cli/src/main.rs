@@ -54,6 +54,10 @@ enum Commands {
         /// since the previous tag), instead of the since-last-post window
         #[arg(long)]
         release: bool,
+        /// Draft a "shipped this week" digest from the last N days of commits
+        /// (default 7). Does not advance the last-post marker
+        #[arg(long, value_name = "DAYS", num_args = 0..=1, default_missing_value = "7", conflicts_with = "release")]
+        week: Option<u32>,
     },
     /// Save sample posts so drafts sound like you
     Voice,
@@ -76,8 +80,8 @@ async fn dispatch(cli: Cli) -> Result<()> {
         Commands::Connect { platform } => auth::connect(platform).await,
         Commands::Status => status::run().await,
         Commands::Logout => auth::logout().await,
-        Commands::Ship { message, to, image, card, release } => {
-            ship::run(message, to, image, card, release).await
+        Commands::Ship { message, to, image, card, release, week } => {
+            ship::run(message, to, image, card, release, week).await
         }
         Commands::Voice => voice::run(),
     }

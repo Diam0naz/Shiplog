@@ -288,6 +288,17 @@ struct DraftReq {
     /// Version tag when drafting a release announcement, else `None`.
     #[serde(skip_serializing_if = "Option::is_none")]
     release: Option<String>,
+    /// True when drafting a weekly digest (`--week`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    digest: bool,
+}
+
+/// Seconds since the Unix epoch, for the weekly-digest cutoff.
+fn now_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 /// The latest version tag reachable from HEAD, plus the previous one (if any),
@@ -533,6 +544,7 @@ pub async fn run(
     images: Vec<PathBuf>,
     want_card: bool,
     release: bool,
+    week: Option<u32>,
 ) -> Result<()> {
     let local_images = check_images(&images)?;   // first line, before load_token
     let token = load_token()?;
@@ -541,10 +553,14 @@ pub async fn run(
     // Marker file sits inside .git/ so it's repo-local but not tracked.
     let marker = repo.path().join("shiplog-last");
 
-    // Choose the commit range: a release (previous tag → latest tag) or the
-    // normal window since the last post.
+    // Choose the commit range: a release (previous tag → latest tag), a weekly
+    // digest (last N days), or the normal window since the last post.
     let version: Option<String>;
+    let digest: bool;
     let since: Option<Oid>;
+    let cutoff: Option<i64>;
+    let advance_marker: bool;
+    let cap: usize;
     let mut walk = repo.revwalk()?;
     if release {
         let (tag, tag_oid, prev_oid) = latest_release(&repo).context(
@@ -552,21 +568,37 @@ pub async fn run(
         )?;
         ui::info(&format!("Release {tag}"));
         version = Some(tag);
+        digest = false;
         since = None;
+        cutoff = None;
+        advance_marker = true;
+        cap = 40;
         walk.push(tag_oid)?;
         if let Some(prev) = prev_oid {
             walk.hide(prev)?; // exclude everything the previous release already had
         }
+    } else if let Some(days) = week {
+        ui::info(&format!("Weekly digest — commits from the last {days} day(s)"));
+        version = None;
+        digest = true;
+        since = None;
+        cutoff = Some(now_seconds() - i64::from(days) * 24 * 60 * 60);
+        advance_marker = false; // a recap, not a catch-up: leave the marker alone
+        cap = 40;
+        walk.push_head().context("no commits yet")?;
     } else {
         version = None;
+        digest = false;
         since = std::fs::read_to_string(&marker)
             .ok()
             .and_then(|s| Oid::from_str(s.trim()).ok());
+        cutoff = None;
+        advance_marker = true;
+        cap = 20;
         walk.push_head().context("no commits yet")?;
     }
     walk.set_sorting(Sort::TIME)?;
 
-    let cap = if release { 40 } else { 20 };
     let mut commits = Vec::new();
     let mut newest: Option<Oid> = None;
     let mut oids: Vec<Oid> = Vec::new();
@@ -576,6 +608,13 @@ pub async fn run(
             break;
         }
         let c = repo.find_commit(oid)?;
+        // Walk is newest-first, so the first commit older than the cutoff ends
+        // the weekly window.
+        if let Some(cut) = cutoff
+            && c.time().seconds() < cut
+        {
+            break;
+        }
         if newest.is_none() {
             newest = Some(oid);
         }
@@ -599,6 +638,8 @@ pub async fn run(
     if commits.is_empty() {
         if release {
             ui::warn("This release has no commits to describe.");
+        } else if week.is_some() {
+            ui::warn("No commits in that window — nothing to recap.");
         } else {
             ui::warn("Nothing new since your last ship.");
             ui::info("Make a commit, then run `shiplog post` again.");
@@ -625,6 +666,7 @@ pub async fn run(
             note,
             voice: crate::voice::load(),
             release: version,
+            digest,
         })
         .send()
         .await?;
@@ -762,8 +804,9 @@ pub async fn run(
 
                 // Atomically update the marker: write to a temp file first,
                 // then rename. This means we never end up with a corrupt or
-                // missing marker if the process dies mid-write.
-                if let Some(oid) = newest {
+                // missing marker if the process dies mid-write. A weekly digest
+                // is a recap, so it leaves the marker alone.
+                if advance_marker && let Some(oid) = newest {
                     let tmp = marker.with_extension("tmp");
                     std::fs::write(&tmp, oid.to_string())?;
                     std::fs::rename(&tmp, &marker)?;
