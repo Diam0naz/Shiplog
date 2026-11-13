@@ -68,9 +68,26 @@ pub async fn login() -> Result<()> {
     let port = server.server_addr().to_ip().context("no port")?.port();
 
     let base = web_base();
-    let url = format!("{base}/cli/login?port={port}&state={state}");
 
     ui::heading("Login");
+
+    // Fail fast if the web app is not reachable, rather than opening a link
+    // into the void. Any HTTP response means it is up; only a transport error
+    // (connection refused, DNS failure, timeout) means it is not.
+    if reqwest::Client::new()
+        .get(&base)
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+        .is_err()
+    {
+        bail!(
+            "the shiplog web app isn't reachable at {base} — start it with `npm run dev` in web/ (or set SHIPLOG_WEB to your deployed URL)"
+        );
+    }
+
+    let url = format!("{base}/cli/login?port={port}&state={state}");
+
     ui::step("Opening your browser to finish signing in");
     ui::info("If nothing opens, visit this URL:");
     ui::url(&url);
