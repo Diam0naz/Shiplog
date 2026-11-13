@@ -285,6 +285,43 @@ struct DraftReq {
     commits: Vec<Commit>,
     note: Option<String>,
     voice: Vec<String>,
+    /// Version tag when drafting a release announcement, else `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    release: Option<String>,
+}
+
+/// The latest version tag reachable from HEAD, plus the previous one (if any),
+/// so a release post can describe exactly the commits that tag introduced.
+fn latest_release(repo: &Repository) -> Option<(String, Oid, Option<Oid>)> {
+    let head = repo.head().ok()?.peel_to_commit().ok()?.id();
+    let names = repo.tag_names(None).ok()?;
+
+    // (tag name, tagged commit, commit time), only tags reachable from HEAD.
+    let mut tags: Vec<(String, Oid, i64)> = Vec::new();
+    for name in names.iter() {
+        let Ok(Some(name)) = name else { continue };
+        let Ok(obj) = repo.revparse_single(&format!("refs/tags/{name}")) else {
+            continue;
+        };
+        let Ok(commit) = obj.peel_to_commit() else { continue };
+        let oid = commit.id();
+        let reachable =
+            oid == head || repo.graph_descendant_of(head, oid).unwrap_or(false);
+        if reachable {
+            tags.push((name.to_string(), oid, commit.time().seconds()));
+        }
+    }
+    if tags.is_empty() {
+        return None;
+    }
+    tags.sort_by_key(|t| t.2);
+    let latest = tags.last().cloned()?;
+    let prev = if tags.len() >= 2 {
+        Some(tags[tags.len() - 2].1)
+    } else {
+        None
+    };
+    Some((latest.0, latest.1, prev))
 }
 
 #[derive(Deserialize)]
@@ -490,27 +527,52 @@ fn label_for(wire: &str) -> &'static str {
     Platform::from_wire(wire).map(Platform::label).unwrap_or("platform")
 }
 
-pub async fn run(note: Option<String>, to: Option<String>, images: Vec<PathBuf>, want_card: bool) -> Result<()> {
+pub async fn run(
+    note: Option<String>,
+    to: Option<String>,
+    images: Vec<PathBuf>,
+    want_card: bool,
+    release: bool,
+) -> Result<()> {
     let local_images = check_images(&images)?;   // first line, before load_token
     let token = load_token()?;
     let repo = Repository::discover(".").context("not inside a git repository")?;
 
     // Marker file sits inside .git/ so it's repo-local but not tracked.
     let marker = repo.path().join("shiplog-last");
-    let since = std::fs::read_to_string(&marker)
-        .ok()
-        .and_then(|s| Oid::from_str(s.trim()).ok());
 
+    // Choose the commit range: a release (previous tag → latest tag) or the
+    // normal window since the last post.
+    let version: Option<String>;
+    let since: Option<Oid>;
     let mut walk = repo.revwalk()?;
-    walk.push_head().context("no commits yet")?;
+    if release {
+        let (tag, tag_oid, prev_oid) = latest_release(&repo).context(
+            "no version tag found — create one with `git tag vX.Y.Z` before `--release`",
+        )?;
+        ui::info(&format!("Release {tag}"));
+        version = Some(tag);
+        since = None;
+        walk.push(tag_oid)?;
+        if let Some(prev) = prev_oid {
+            walk.hide(prev)?; // exclude everything the previous release already had
+        }
+    } else {
+        version = None;
+        since = std::fs::read_to_string(&marker)
+            .ok()
+            .and_then(|s| Oid::from_str(s.trim()).ok());
+        walk.push_head().context("no commits yet")?;
+    }
     walk.set_sorting(Sort::TIME)?;
 
+    let cap = if release { 40 } else { 20 };
     let mut commits = Vec::new();
     let mut newest: Option<Oid> = None;
     let mut oids: Vec<Oid> = Vec::new();
     for oid in walk {
         let oid = oid?;
-        if Some(oid) == since || commits.len() >= 20 {
+        if Some(oid) == since || commits.len() >= cap {
             break;
         }
         let c = repo.find_commit(oid)?;
@@ -535,8 +597,12 @@ pub async fn run(note: Option<String>, to: Option<String>, images: Vec<PathBuf>,
     }
 
     if commits.is_empty() {
-        ui::warn("Nothing new since your last ship.");
-        ui::info("Make a commit, then run `shiplog post` again.");
+        if release {
+            ui::warn("This release has no commits to describe.");
+        } else {
+            ui::warn("Nothing new since your last ship.");
+            ui::info("Make a commit, then run `shiplog post` again.");
+        }
         return Ok(());
     }
 
@@ -558,6 +624,7 @@ pub async fn run(note: Option<String>, to: Option<String>, images: Vec<PathBuf>,
             commits,
             note,
             voice: crate::voice::load(),
+            release: version,
         })
         .send()
         .await?;

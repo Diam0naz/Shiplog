@@ -50,6 +50,10 @@ enum Commands {
         /// Attach a code card rendered from your latest change
         #[arg(long)]
         card: bool,
+        /// Draft a release announcement from the latest version tag (commits
+        /// since the previous tag), instead of the since-last-post window
+        #[arg(long)]
+        release: bool,
     },
     /// Save sample posts so drafts sound like you
     Voice,
@@ -72,7 +76,9 @@ async fn dispatch(cli: Cli) -> Result<()> {
         Commands::Connect { platform } => auth::connect(platform).await,
         Commands::Status => status::run().await,
         Commands::Logout => auth::logout().await,
-        Commands::Ship { message, to, image, card } => ship::run(message, to, image, card).await,
+        Commands::Ship { message, to, image, card, release } => {
+            ship::run(message, to, image, card, release).await
+        }
         Commands::Voice => voice::run(),
     }
 }
