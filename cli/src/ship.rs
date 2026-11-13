@@ -593,6 +593,14 @@ pub async fn run(note: Option<String>, to: Option<String>, images: Vec<PathBuf>,
         ui::blank();
         ui::draft_card(&draft);
 
+        if draft.chars().count() > 280 {
+            // ~272 chars of room per tweet once the (i/n) counter is added.
+            let parts = draft.chars().count().div_ceil(272);
+            ui::info(&format!(
+                "Over 280 — posts as a ~{parts}-tweet thread on X; one post on LinkedIn/Farcaster."
+            ));
+        }
+
         let attached = local_images.len() + usize::from(card.is_some());
         if attached > 0 {
             ui::info(&format!("{attached} image(s) attached"));

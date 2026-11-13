@@ -67,11 +67,11 @@ export async function POST(req: Request) {
     ? ([...new Set(targets as Platform[])] as Platform[])
     : PLATFORMS;
 
-  // X rejects anything over 280 characters, so say that plainly instead of
-  // letting the API answer with a 403 after LinkedIn already published.
-  if (chosen.includes("x") && text.length > 280) {
+  // X threads anything over 280 characters (see lib/x.ts), so only a runaway
+  // draft is rejected — a sanity cap, not the per-tweet limit.
+  if (text.length > 10_000) {
     return NextResponse.json(
-      { error: `post is ${text.length} characters; X allows 280` },
+      { error: `post is ${text.length} characters; keep it under 10,000` },
       { status: 400 },
     );
   }

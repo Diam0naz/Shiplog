@@ -510,9 +510,15 @@ pub fn draft_card(text: &str) {
     let count = text.chars().count();
     let limit = 280usize;
 
-    let count_text = format!("{count} / {limit}");
+    // Over 280 is no longer an error: X threads it, LinkedIn/Farcaster keep it
+    // whole — so the over-limit state is informational (cyan), not alarming red.
+    let count_text = if count > limit {
+        format!("{count} · threads")
+    } else {
+        format!("{count} / {limit}")
+    };
     let count_coloured = if count > limit {
-        count_text.bright_red().bold().to_string()
+        count_text.bright_cyan().bold().to_string()
     } else if count > limit * 8 / 10 {
         count_text.bright_yellow().bold().to_string()
     } else {

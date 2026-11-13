@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { ExpiredError, NotConnectedError } from "./publish";
+import { splitThread } from "./thread";
 import { loadX, saveX, type XAuth } from "./tokens";
 
 // X's OAuth 2.0 endpoints. The bases are overridable so the flow can be run
@@ -170,15 +171,22 @@ export async function freshToken(userId: string) {
   return auth;
 }
 
-export async function postToX(userId: string, text: string) {
-  const auth = await freshToken(userId);
+/** Posts one tweet, optionally as a reply, and returns its id. */
+async function postTweet(
+  accessToken: string,
+  text: string,
+  replyToId?: string,
+): Promise<string> {
   const res = await fetch(`${apiBase()}/2/tweets`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${auth.accessToken}`,
+      Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({
+      text,
+      ...(replyToId ? { reply: { in_reply_to_tweet_id: replyToId } } : {}),
+    }),
   });
 
   const body = (await res.json().catch(() => null)) as {
@@ -194,11 +202,40 @@ export async function postToX(userId: string, text: string) {
   }
   const id = body?.data?.id;
   if (!id) throw new Error("X accepted the tweet but returned no id");
+  return id;
+}
+
+/**
+ * Publishes to X. A draft that fits in one tweet posts as one; a longer one is
+ * split into a reply-chained thread. The returned id/url point at the root
+ * tweet, so a link always opens the start of the thread.
+ */
+export async function postToX(userId: string, text: string) {
+  const auth = await freshToken(userId);
+  const parts = splitThread(text);
+
+  let rootId: string | undefined;
+  let lastId: string | undefined;
+  for (const [i, part] of parts.entries()) {
+    try {
+      const id = await postTweet(auth.accessToken, part, lastId);
+      rootId ??= id;
+      lastId = id;
+    } catch (e) {
+      // A thread that stalls partway is worse than a clean failure, so say how
+      // far it got rather than swallowing the state.
+      const msg = e instanceof Error ? e.message : "post failed";
+      if (i === 0) throw e;
+      throw new Error(
+        `${msg} — posted ${i} of ${parts.length} parts of the thread`,
+      );
+    }
+  }
 
   return {
-    id,
+    id: rootId,
     url: auth.username
-      ? `https://x.com/${auth.username}/status/${id}`
-      : `https://x.com/i/status/${id}`,
+      ? `https://x.com/${auth.username}/status/${rootId}`
+      : `https://x.com/i/status/${rootId}`,
   };
 }
