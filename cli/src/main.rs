@@ -1,4 +1,5 @@
 mod auth;
+mod pod;
 mod ship;
 mod status;
 mod ui;
@@ -61,6 +62,11 @@ enum Commands {
     },
     /// Save sample posts so drafts sound like you
     Voice,
+    /// Builder pods — ship alongside a small group of builders
+    Pod {
+        #[command(subcommand)]
+        action: Option<pod::PodAction>,
+    },
 }
 
 /// Returns (and creates if necessary) the shared ~/.config/shiplog directory.
@@ -84,6 +90,7 @@ async fn dispatch(cli: Cli) -> Result<()> {
             ship::run(message, to, image, card, release, week).await
         }
         Commands::Voice => voice::run(),
+        Commands::Pod { action } => pod::run(action).await,
     }
 }
 

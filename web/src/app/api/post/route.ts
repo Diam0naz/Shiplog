@@ -11,6 +11,8 @@ import {
 } from "@/lib/publish";
 import { requireUser } from "@/lib/session";
 import { recordShip } from "@/lib/streak";
+import { recordShipDb } from "@/lib/builders";
+import { dbConfigured } from "@/lib/db";
 import { postToX } from "@/lib/x";
 import { parseImages, type PostImage } from "@/lib/images";
 
@@ -106,8 +108,11 @@ export async function POST(req: Request) {
   // A shipped post counts toward the streak. Best-effort: never fail a
   // successful publish because the streak log couldn't be written.
   if (results.some((r) => r.ok)) {
+    const okPlatforms = results.filter((r) => r.ok).map((r) => r.platform);
     try {
       await recordShip(user.id);
+      // Mirror into Postgres for pod cadence, when a builder DB is configured.
+      if (dbConfigured()) await recordShipDb(user.id, okPlatforms);
     } catch (e) {
       console.error("recordShip failed", e);
     }

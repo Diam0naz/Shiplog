@@ -191,6 +191,7 @@ Put these in `web/.env.local` (Next.js loads it automatically) and restart
 | `FARCASTER_DEVELOPER_MNEMONIC` | Posting to Farcaster | Seed phrase of your app's **developer** Farcaster account. Used server-side to sign the managed-signer key request. Keep it secret (Vercel env / `.env.local`, never git) |
 | `FARCASTER_DEVELOPER_FID` | Optional | Your app's developer FID. Derived from the mnemonic's custody address when omitted |
 | `FARCASTER_API_BASE` | Optional | Neynar API base URL, defaults to `https://api.neynar.com/v2` |
+| `DATABASE_URL` | Builder pods | Neon/Postgres connection string. Enables builder profiles and pods (`shiplog pod`); the schema is created on first use. Without it, pods are disabled and the rest of shiplog (auth, posting, solo streaks) works unchanged |
 
 If `LLM_BASE_URL` or `LLM_MODEL` is missing — or the model call fails — the
 draft endpoint logs the error and returns a template draft instead, so the CLI
@@ -333,6 +334,7 @@ Set the variables from the table above in the Vercel project (dashboard or
 | `shiplog logout` | Revokes the session on the server and deletes the local token |
 | `shiplog post [MESSAGE] [--to TARGETS]` | Draft from recent commits, then Post / Edit / Skip. `--to` is `linkedin`, `x`, `all`, or a comma-separated list. `--release` drafts a release announcement from the latest version tag; `--week [DAYS]` drafts a "shipped this week" digest (default 7 days). A draft over 280 characters posts as a thread on X |
 | `shiplog voice` | Edit the voice samples used to steer drafts |
+| `shiplog pod [create <name> \| join <code> \| leave <id>]` | Builder pods: opt in with a handle, create/join a small group by code, and see who in your pod shipped this week. Needs `DATABASE_URL` on the web app |
 | `shiplog --help` | Usage, `--version` for the version |
 
 ### CLI environment variables
