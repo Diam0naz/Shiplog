@@ -92,13 +92,15 @@ const GLYPHS: [[&str; 5]; 7] = [
 
 const TAGLINE: &str = "turn your commits into posts";
 
-// Brand palette (truecolor), shared by every scene.
-const YELLOW: (u8, u8, u8) = (245, 197, 24);
-const WHITE: (u8, u8, u8) = (236, 239, 243);
-const GREY: (u8, u8, u8) = (150, 160, 172);
-const NAVY: (u8, u8, u8) = (66, 104, 170);
-const SEA: (u8, u8, u8) = (30, 170, 150);
-const BORDER: (u8, u8, u8) = (56, 118, 126);
+// Brand palette (truecolor), from the web design tokens in globals.css.
+const YELLOW: (u8, u8, u8) = (245, 197, 24); // --yellow  #F5C518
+const CORAL: (u8, u8, u8) = (232, 93, 93); //  --coral   #E85D5D
+const TEAL: (u8, u8, u8) = (92, 214, 176); //  --deck-ok #5CD6B0
+const WHITE: (u8, u8, u8) = (230, 237, 242); // --deck-fg #E6EDF2
+const GREY: (u8, u8, u8) = (143, 163, 179); //  --deck-dim #8FA3B3
+const NAVY: (u8, u8, u8) = (52, 80, 106); //   --rule-strong (dark)
+const SEA: (u8, u8, u8) = (27, 116, 97); //    --sea     #1B7461
+const BORDER: (u8, u8, u8) = (38, 61, 82); //  --deck-rule #263D52
 
 /// Content rows inside the terminal panel (height of every scene).
 const CH: usize = 5;
@@ -123,17 +125,11 @@ fn wordmark_rows() -> [String; 5] {
     })
 }
 
-/// Vivid multi-stop spectrum (gold → coral → pink → periwinkle → teal), with
-/// `t` in `0..=1`. Gold and teal anchor it to the brand; the stops between make
-/// the wordmark read as clearly multicoloured rather than a flat wash.
+/// The brand gradient (gold → coral → teal), with `t` in `0..=1`. Every stop is
+/// a shiplog design token, so the wordmark stays on-brand while still reading
+/// as a lively sweep rather than a flat wash.
 fn gradient(t: f32) -> (u8, u8, u8) {
-    const STOPS: [(u8, u8, u8); 5] = [
-        (245, 197, 24),  // gold
-        (247, 118, 62),  // coral/orange
-        (233, 92, 158),  // pink
-        (124, 124, 236), // periwinkle
-        (36, 196, 164),  // teal
-    ];
+    const STOPS: [(u8, u8, u8); 3] = [YELLOW, CORAL, TEAL];
     let t = t.clamp(0.0, 1.0) * (STOPS.len() - 1) as f32;
     let i = (t.floor() as usize).min(STOPS.len() - 2);
     lerp(STOPS[i], STOPS[i + 1], t - i as f32)
@@ -218,14 +214,14 @@ fn ship_grid(w: usize, phase: f32) -> Grid {
             } else if ch == '▌' {
                 GREY // mast
             } else {
-                lerp(YELLOW, (247, 118, 62), r as f32 / 3.0) // sail: gold → coral
+                lerp(YELLOW, CORAL, r as f32 / 3.0) // sail: gold → coral
             };
             put(&mut g, r, off + 1 + i, ch, rgb);
         }
     }
     for c in 0..fw {
         let t = (c as f32 * 0.7 + phase).sin() * 0.5 + 0.5;
-        put(&mut g, 4, off + c, '~', lerp(SEA, (120, 230, 245), t));
+        put(&mut g, 4, off + c, '~', lerp(SEA, TEAL, t));
     }
     g
 }
@@ -373,7 +369,7 @@ fn tagline(w: usize) {
     println!(
         "{}{}",
         " ".repeat(pad),
-        TAGLINE.truecolor(90, 200, 175).italic()
+        TAGLINE.truecolor(TEAL.0, TEAL.1, TEAL.2).italic()
     );
     println!();
 }
