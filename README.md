@@ -187,8 +187,9 @@ Put these in `web/.env.local` (Next.js loads it automatically) and restart
 | `X_CLIENT_ID` | Posting to X | OAuth 2.0 client id from your X developer app |
 | `X_CLIENT_SECRET` | Posting to X | Client secret. Leave it out only if the app is registered as a public client |
 | `X_REDIRECT_URI` | Optional | Defaults to `<origin>/api/x/callback`; set it when the app requires an exact value, e.g. `http://localhost:3000/api/x/callback` or `https://shiplog-sage.vercel.app/api/x/callback` |
-| `FARCASTER_API_KEY` | Posting to Farcaster | Neynar API key for casting (get from neynar.com) |
-| `NEXT_PUBLIC_NEYNAR_APP_ID` | Posting to Farcaster | Neynar App ID for SIWN button (get from neynar.com) |
+| `FARCASTER_API_KEY` | Posting to Farcaster | Neynar API key (get from neynar.com) |
+| `FARCASTER_DEVELOPER_MNEMONIC` | Posting to Farcaster | Seed phrase of your app's **developer** Farcaster account. Used server-side to sign the managed-signer key request. Keep it secret (Vercel env / `.env.local`, never git) |
+| `FARCASTER_DEVELOPER_FID` | Optional | Your app's developer FID. Derived from the mnemonic's custody address when omitted |
 | `FARCASTER_API_BASE` | Optional | Neynar API base URL, defaults to `https://api.neynar.com/v2` |
 
 If `LLM_BASE_URL` or `LLM_MODEL` is missing — or the model call fails — the
@@ -270,17 +271,22 @@ ones you want.
 
 ### Connecting Farcaster
 
-Farcaster does **not** use OAuth 2.0. Instead, it uses **Sign In With Neynar (SIWN)** — a managed auth flow that returns a `fid` and `signer_uuid` after the user approves in their Farcaster wallet (Warpcast, etc.).
+Farcaster does **not** use OAuth 2.0, and Neynar's older "Sign In With Neynar"
+flow is deprecated. shiplog uses **Neynar managed signers**: the app creates a
+signer, signs a key request with your app's developer account, and the user
+approves that signer once in their Farcaster wallet.
 
 You'll need:
-1. A **Neynar account** (neynar.com) → create an **App** to get an **App ID** and **API Key**
-2. No Farcaster developer portal registration needed
+1. A **Neynar account** (neynar.com) → create an **App** to get an **API Key**.
+2. A **developer Farcaster account** whose **seed phrase** the server can use to
+   sign key requests.
 
 Add these to `.env.local` (or Vercel env vars):
 
 ```bash
 FARCASTER_API_KEY=your_neynar_api_key
-NEXT_PUBLIC_NEYNAR_APP_ID=your_neynar_app_id
+FARCASTER_DEVELOPER_MNEMONIC="word1 word2 … word12"   # keep this secret
+# FARCASTER_DEVELOPER_FID=12345                        # optional; derived otherwise
 ```
 
 Then open:
@@ -290,12 +296,13 @@ Then open:
 **Production:** <https://shiplog-sage.vercel.app/connect/farcaster>
 
 The flow:
-1. Page shows "Sign in with Farcaster" button → opens Neynar SIWN modal
-2. User approves in their Farcaster wallet (Warpcast, etc.)
-3. Neynar redirects back to `/connect/farcaster?fid=...&signer_uuid=...`
-4. Frontend POSTs `{ fid, signer_uuid }` to `/api/farcaster/connect`
-5. Backend verifies signer with Neynar, fetches profile, stores encrypted
-6. CLI can now post casts using the signer via Neynar
+1. The page creates a signer (`POST /api/farcaster/signer`) and shows an
+   approval **QR code** plus an "Open in wallet" link.
+2. You scan it on your phone (or tap on mobile) and approve the signer in your
+   Farcaster wallet — a one-time on-chain step (sponsored unless you opt out).
+3. The page polls (`GET /api/farcaster/signer`) until the signer is approved,
+   stores it encrypted under your user id, and you're connected.
+4. `shiplog post` casts through that approved signer via Neynar.
 
 ---
 

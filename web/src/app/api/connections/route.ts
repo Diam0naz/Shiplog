@@ -34,13 +34,18 @@ export async function GET(req: Request) {
             username: x.username,
           }
         : { connected: false },
-      farcaster: farcaster
-        ? {
-            connected: true,
-            expired: false, // Farcaster tokens don't expire the same way
-            username: farcaster.username,
-          }
-        : { connected: false },
+      farcaster:
+        farcaster && farcaster.status === "approved"
+          ? {
+              connected: true,
+              expired: false, // an approved signer doesn't expire
+              username: farcaster.username,
+            }
+          : {
+              connected: false,
+              // A signer created but not yet approved in the wallet.
+              pending: farcaster?.status === "pending_approval",
+            },
     });
   } catch (e) {
     // Storage misconfiguration must be visible, not reported as "nothing

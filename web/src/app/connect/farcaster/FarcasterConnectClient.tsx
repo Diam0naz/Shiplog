@@ -1,120 +1,160 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import QRCode from "qrcode";
 import styles from "@/app/page.module.css";
 
 /**
- * Farcaster Connect Client Component — shows Neynar SIWN button.
- * After user approves, Neynar redirects back with ?fid=...&signer_uuid=...
- * We POST those to /api/farcaster/connect to store on backend.
+ * Farcaster connect via Neynar managed signers.
+ *  1. Create a signer (POST /api/farcaster/signer) -> approval URL.
+ *  2. Show it as a QR (desktop) and a tappable link (mobile) to approve in a
+ *     Farcaster wallet.
+ *  3. Poll (GET /api/farcaster/signer) until approved, then redirect home.
  */
+type Phase = "idle" | "creating" | "awaiting" | "approved" | "error";
+
 export default function FarcasterConnectClient() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [loading, setLoading] = useState(false);
+  const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
-  // window is undefined during server render. A lazy initializer keeps this out
-  // of the render body (so it can't crash on the server) while avoiding a
-  // setState-in-effect; the page's Suspense boundary renders a fallback on the
-  // server, so the client is the only place this component's body runs for real.
-  const [siwnUrl] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    const appId = process.env.NEXT_PUBLIC_NEYNAR_APP_ID ?? "your-app-id";
-    const redirect = encodeURIComponent(
-      window.location.origin + "/connect/farcaster",
-    );
-    return `https://siwn.neynar.com/?app_id=${appId}&redirect_uri=${redirect}`;
-  });
+  const [approvalUrl, setApprovalUrl] = useState<string | null>(null);
+  const [qr, setQr] = useState<string | null>(null);
+  const started = useRef(false);
 
-  const handleCallback = useCallback(
-    async (fid: number, signerUuid: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/farcaster/connect", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fid, signer_uuid: signerUuid }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error ?? `Failed (${res.status})`);
-        }
-        // Success — show confirmation and redirect
-        setDone(true);
-        setLoading(false);
-        setTimeout(() => router.push("/"), 1500);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Connection failed");
-        setLoading(false);
-      }
-    },
-    [router],
-  );
-
-  // Handle Neynar's redirect back with fid + signer_uuid. Firing the request
-  // (which sets loading/error state) in response to the URL is the intended
-  // behaviour here, so the set-state-in-effect guard is disabled for it.
+  // Render the approval URL as a QR code once we have it.
   useEffect(() => {
-    const fid = searchParams.get("fid");
-    const signerUuid = searchParams.get("signer_uuid");
-    if (fid && signerUuid) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      handleCallback(Number(fid), signerUuid);
+    if (!approvalUrl) return;
+    QRCode.toDataURL(approvalUrl, { margin: 1, width: 232 })
+      .then(setQr)
+      .catch(() => setQr(null));
+  }, [approvalUrl]);
+
+  // While awaiting approval, poll the signer status.
+  useEffect(() => {
+    if (phase !== "awaiting") return;
+    let active = true;
+    const tick = async () => {
+      try {
+        const res = await fetch("/api/farcaster/signer");
+        if (!res.ok || !active) return;
+        const data = await res.json();
+        if (data.status === "approved" && active) {
+          setPhase("approved");
+          setTimeout(() => router.push("/"), 1500);
+        }
+      } catch {
+        /* transient; keep polling */
+      }
+    };
+    const id = setInterval(tick, 3000);
+    tick();
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [phase, router]);
+
+  const start = useCallback(async () => {
+    if (started.current) return;
+    started.current = true;
+    setPhase("creating");
+    setError(null);
+    try {
+      const res = await fetch("/api/farcaster/signer", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Failed (${res.status})`);
+      if (!data.approval_url) throw new Error("No approval URL returned");
+      setApprovalUrl(data.approval_url as string);
+      setPhase("awaiting");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start");
+      setPhase("error");
+      started.current = false;
     }
-  }, [searchParams, handleCallback]);
+  }, []);
 
   return (
-    <div className={styles.page} style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "40px" }}>
-      <div className={styles.card} style={{ maxWidth: "420px", width: "100%", textAlign: "center" }}>
+    <div
+      className={styles.page}
+      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "40px" }}
+    >
+      <div className={styles.card} style={{ maxWidth: "440px", width: "100%", textAlign: "center" }}>
         <h1 style={{ marginBottom: "1rem" }}>Connect Farcaster</h1>
-        <p style={{ color: "var(--ink-2)", marginBottom: "2rem" }}>
-          Sign in with your Farcaster account to enable posting.
-        </p>
 
-        {!loading && !error && !done && siwnUrl && (
-          <a
-            href={siwnUrl}
-            className={styles.btn}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.75rem",
-              width: "100%",
-              justifyContent: "center",
-              fontSize: "1rem",
-              padding: "1rem",
-            }}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" />
-              <path d="M12 16c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-            Sign in with Farcaster
-          </a>
+        {(phase === "idle" || phase === "creating") && (
+          <>
+            <p style={{ color: "var(--ink-2)", marginBottom: "2rem" }}>
+              Approve a signer so shiplog can cast on your behalf. You&apos;ll
+              confirm once in your Farcaster wallet.
+            </p>
+            <button
+              type="button"
+              onClick={start}
+              disabled={phase === "creating"}
+              className={styles.btn}
+              style={{ width: "100%", justifyContent: "center", fontSize: "1rem", padding: "1rem", cursor: "pointer" }}
+            >
+              {phase === "creating" ? "Preparing…" : "Connect Farcaster"}
+            </button>
+          </>
         )}
 
-        {loading && (
-          <div style={{ marginTop: "1.5rem", color: "var(--ink-2)" }}>
-            Verifying signer...
+        {phase === "awaiting" && (
+          <>
+            <p style={{ color: "var(--ink-2)", marginBottom: "1.5rem" }}>
+              Scan with your phone, or tap to open your Farcaster wallet, then
+              approve the signer.
+            </p>
+            {qr && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={qr}
+                alt="Farcaster approval QR code"
+                width={232}
+                height={232}
+                style={{ borderRadius: "8px", background: "#fff", padding: "8px", margin: "0 auto 1.25rem" }}
+              />
+            )}
+            {approvalUrl && (
+              <a
+                href={approvalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.btn}
+                style={{ width: "100%", justifyContent: "center", padding: "0.85rem", marginBottom: "1rem" }}
+              >
+                Open in wallet
+              </a>
+            )}
+            <p style={{ color: "var(--ink-3)", fontSize: "0.875rem" }}>
+              Waiting for approval… this page updates automatically.
+            </p>
+          </>
+        )}
+
+        {phase === "approved" && (
+          <div style={{ marginTop: "1rem", color: "var(--sea, #1b7461)", fontSize: "1.05rem" }}>
+            ✓ Connected! Redirecting…
           </div>
         )}
 
-        {error && (
-          <div style={{ marginTop: "1.5rem", padding: "1rem", background: "color-mix(in srgb, var(--coral, #e85d5d) 15%, transparent)", border: "1px solid var(--coral, #e85d5d)", borderRadius: "4px", color: "var(--ink)" }}>
-            {error}
-          </div>
-        )}
-
-        {done && !error && (
-          <div style={{ marginTop: "1.5rem", color: "var(--sea, #1b7461)" }}>
-            ✓ Connected! Redirecting...
-          </div>
+        {phase === "error" && (
+          <>
+            <div
+              style={{ marginTop: "0.5rem", marginBottom: "1.5rem", padding: "1rem", background: "color-mix(in srgb, var(--coral, #e85d5d) 15%, transparent)", border: "1px solid var(--coral, #e85d5d)", borderRadius: "4px", color: "var(--ink)" }}
+            >
+              {error}
+            </div>
+            <button
+              type="button"
+              onClick={start}
+              className={styles.btn}
+              style={{ width: "100%", justifyContent: "center", padding: "0.85rem", cursor: "pointer" }}
+            >
+              Try again
+            </button>
+          </>
         )}
 
         <p className={styles.brand} style={{ marginTop: "2rem" }}>shiplog</p>

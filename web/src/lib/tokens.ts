@@ -23,10 +23,13 @@ export type FarcasterAuth = {
   username: string;
   displayName?: string;
   pfpUrl?: string;
-  // Signer UUID from Sign In with Farcaster
+  // Neynar managed signer that casts on the user's behalf.
   signerUuid: string;
-  // Ed25519 private key for signing (encrypted)
-  signerPrivateKey?: string;
+  // "pending_approval" until the user approves the signer in their wallet,
+  // then "approved". Only an approved signer can cast.
+  status: "pending_approval" | "approved";
+  // Deep link the user opens to approve the signer (valid while pending).
+  approvalUrl?: string;
 };
 
 type AuthFor = {
