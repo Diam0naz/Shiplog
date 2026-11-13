@@ -22,6 +22,16 @@ export default function FarcasterConnectClient() {
   const [qr, setQr] = useState<string | null>(null);
   const started = useRef(false);
 
+  // Full-page navigation (not router.push) so the browser follows the 307 from
+  // /api/github/connect out to GitHub and back; a client route can't follow a
+  // server redirect to an external OAuth provider.
+  const goToLogin = useCallback(() => {
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.href = `/api/github/connect?next=${encodeURIComponent(
+      "/connect/farcaster",
+    )}`;
+  }, []);
+
   // Render the approval URL as a QR code once we have it.
   useEffect(() => {
     if (!approvalUrl) return;
@@ -37,6 +47,10 @@ export default function FarcasterConnectClient() {
     const tick = async () => {
       try {
         const res = await fetch("/api/farcaster/signer");
+        if (res.status === 401 && active) {
+          goToLogin();
+          return;
+        }
         if (!res.ok || !active) return;
         const data = await res.json();
         if (data.status === "approved" && active) {
@@ -53,7 +67,7 @@ export default function FarcasterConnectClient() {
       active = false;
       clearInterval(id);
     };
-  }, [phase, router]);
+  }, [phase, router, goToLogin]);
 
   const start = useCallback(async () => {
     if (started.current) return;
@@ -62,6 +76,12 @@ export default function FarcasterConnectClient() {
     setError(null);
     try {
       const res = await fetch("/api/farcaster/signer", { method: "POST" });
+      // No session on this host — send the user through GitHub login (on THIS
+      // origin) and back, instead of dead-ending on "unauthorized".
+      if (res.status === 401) {
+        goToLogin();
+        return;
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Failed (${res.status})`);
       if (!data.approval_url) throw new Error("No approval URL returned");
@@ -72,7 +92,7 @@ export default function FarcasterConnectClient() {
       setPhase("error");
       started.current = false;
     }
-  }, []);
+  }, [goToLogin]);
 
   return (
     <div
