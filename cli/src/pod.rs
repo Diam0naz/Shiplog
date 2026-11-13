@@ -25,6 +25,8 @@ pub enum PodAction {
         /// The pod id (shown by `shiplog pod`)
         id: String,
     },
+    /// Suggest similar builders to invite (shared tags, language, activity)
+    Suggest,
 }
 
 #[derive(Deserialize)]
@@ -39,6 +41,25 @@ struct Member {
     is_you: bool,
     #[serde(rename = "shippedThisWeek", default)]
     shipped_this_week: bool,
+    #[serde(default)]
+    weeks: u32,
+}
+
+#[derive(Deserialize)]
+struct Suggestion {
+    handle: String,
+    #[serde(rename = "primaryLang", default)]
+    primary_lang: Option<String>,
+    #[serde(rename = "sharedTags", default)]
+    shared_tags: Vec<String>,
+    #[serde(default)]
+    active: bool,
+}
+
+#[derive(Deserialize)]
+struct SuggestResp {
+    #[serde(default)]
+    suggestions: Vec<Suggestion>,
 }
 
 #[derive(Deserialize)]
@@ -92,6 +113,10 @@ pub async fn run(action: Option<PodAction>) -> Result<()> {
             join(&client, &base, &token, &code).await
         }
         Some(PodAction::Leave { id }) => leave(&client, &base, &token, &id).await,
+        Some(PodAction::Suggest) => {
+            ensure_builder(&client, &base, &token).await?;
+            suggest(&client, &base, &token).await
+        }
     }
 }
 
@@ -166,14 +191,19 @@ async fn list(client: &reqwest::Client, base: &str, token: &str) -> Result<()> {
         ui::info(&format!("{}  ·  code {}  ·  id {}", pod.name, pod.join_code, pod.id));
         for m in &pod.members {
             let who = if m.is_you {
-                format!("{} (you)", m.handle)
+                format!("@{} (you)", m.handle)
             } else {
-                m.handle.clone()
+                format!("@{}", m.handle)
+            };
+            let streak = if m.weeks > 0 {
+                format!("{}-wk streak", m.weeks)
+            } else {
+                "no streak".to_string()
             };
             if m.shipped_this_week {
-                ui::ok(&format!("shipped this week — {who}"));
+                ui::ok(&format!("{who}  ·  shipped this week  ·  {streak}"));
             } else {
-                ui::info(&format!("  not yet this week — {who}"));
+                ui::info(&format!("  {who}  ·  not yet this week  ·  {streak}"));
             }
         }
     }
@@ -239,5 +269,44 @@ async fn leave(
         bail!("{}", error_of(resp).await);
     }
     ui::ok("Left the pod.");
+    Ok(())
+}
+
+async fn suggest(client: &reqwest::Client, base: &str, token: &str) -> Result<()> {
+    ui::heading("Similar builders");
+    let resp = client
+        .get(format!("{base}/api/suggestions"))
+        .bearer_auth(token)
+        .send()
+        .await?;
+    if !resp.status().is_success() {
+        bail!("{}", error_of(resp).await);
+    }
+    let data: SuggestResp = resp.json().await?;
+    if data.suggestions.is_empty() {
+        ui::info("No other builders to suggest yet — invite people with your pod code.");
+        return Ok(());
+    }
+
+    for s in &data.suggestions {
+        let mut bits: Vec<String> = Vec::new();
+        if let Some(lang) = &s.primary_lang {
+            bits.push(lang.clone());
+        }
+        if !s.shared_tags.is_empty() {
+            bits.push(format!("shares {}", s.shared_tags.join(", ")));
+        }
+        if s.active {
+            bits.push("shipping this week".to_string());
+        }
+        let detail = if bits.is_empty() {
+            String::new()
+        } else {
+            format!("  ·  {}", bits.join("  ·  "))
+        };
+        ui::ok(&format!("@{}{detail}", s.handle));
+    }
+    ui::blank();
+    ui::info("Share your pod code with them to ship together.");
     Ok(())
 }

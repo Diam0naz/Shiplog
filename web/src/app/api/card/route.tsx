@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { requireUser } from "@/lib/session";
 import { findSecret } from "@/lib/secrets";
 import { highlight } from "@/lib/highlight";
+import { signedBlobUrl } from "@/lib/blob";
 
 const MAX_LINES = 12;
 const MAX_COLS = 76;
@@ -155,13 +156,14 @@ export async function POST(req: Request) {
     fonts: [{ name: "Mono", data: await getFont(), style: "normal", weight: 400 }],
   }).arrayBuffer();
 
-  const blob = await put(`shiplog/${user.id}/cards/${randomUUID()}.png`, png, {
-    access: "public",
+  const pathname = `shiplog/${user.id}/cards/${randomUUID()}.png`;
+  await put(pathname, png, {
+    access: "private",
     contentType: "image/png",
   });
 
   return NextResponse.json({
-    url: blob.url,
+    url: await signedBlobUrl(pathname),
     alt: `Code change in ${file}: ${added} line${added === 1 ? "" : "s"} added, ${removed} removed`,
   });
 }

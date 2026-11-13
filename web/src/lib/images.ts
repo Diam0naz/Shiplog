@@ -2,8 +2,9 @@ export type PostImage = { url: string; alt?: string };
 
 export const MAX_IMAGES = 4;
 // Only accept URLs from our own Blob store: the LinkedIn adapter downloads
-// these server-side, so arbitrary URLs would be an SSRF hole.
-const BLOB_HOST = /^[a-z0-9-]+\.public\.blob\.vercel-storage\.com$/i;
+// these server-side, so arbitrary URLs would be an SSRF hole. Private blobs
+// are handed out as short-lived signed URLs, which still live on this host.
+const BLOB_HOST = /^[a-z0-9-]+\.(?:public|private)\.blob\.vercel-storage\.com$/i;
 
 export function parseImages(raw: unknown): PostImage[] | null {
   if (raw === undefined || raw === null) return [];

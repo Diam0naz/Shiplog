@@ -338,7 +338,7 @@ Set the variables from the table above in the Vercel project (dashboard or
 | `shiplog logout` | Revokes the session on the server and deletes the local token |
 | `shiplog post [MESSAGE] [--to TARGETS]` | Draft from recent commits, then Post / Edit / Skip. `--to` is `linkedin`, `x`, `all`, or a comma-separated list. `--release` drafts a release announcement from the latest version tag; `--week [DAYS]` drafts a "shipped this week" digest (default 7 days). A draft over 280 characters posts as a thread on X |
 | `shiplog voice` | Edit the voice samples used to steer drafts |
-| `shiplog pod [create <name> \| join <code> \| leave <id>]` | Builder pods: opt in with a handle, create/join a small group by code, and see who in your pod shipped this week. Needs `DATABASE_URL` on the web app |
+| `shiplog pod [create <name> \| join <code> \| leave <id> \| suggest]` | Builder pods: opt in with a handle, create/join a small group by code, and see each member's weekly shipping streak. `pod suggest` recommends up to 5 similar builders (shared tags + primary language + recent activity). Needs `DATABASE_URL` on the web app |
 | `shiplog --help` | Usage, `--version` for the version |
 
 ### CLI environment variables

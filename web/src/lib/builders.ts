@@ -17,6 +17,19 @@ export type PodMember = {
   handle: string;
   isYou: boolean;
   shippedThisWeek: boolean;
+  /** Consecutive weeks with a ship (personal streak), from the DB. */
+  weeks: number;
+};
+
+export type Suggestion = {
+  handle: string;
+  primaryLang: string | null;
+  /** Tags this builder shares with you. */
+  sharedTags: string[];
+  /** True when their primary language matches yours. */
+  sameLang: boolean;
+  /** Shipped this week — an active builder to pair with. */
+  active: boolean;
 };
 
 export type Pod = {
@@ -30,13 +43,34 @@ export type Pod = {
 const clip = (s: unknown, n: number) =>
   typeof s === "string" ? s.trim().slice(0, n) : "";
 
+const DAY_MS = 86400000;
+
+/** Timestamp of the Monday (UTC) that starts `iso`'s week. */
+function weekStartMs(iso: string): number {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  const t = Date.UTC(y, m - 1, d);
+  const dow = new Date(t).getUTCDay();
+  return t - ((dow + 6) % 7) * DAY_MS;
+}
+
 /** Monday (UTC) of the current week as YYYY-MM-DD, matching the streak logic. */
 function mondayISO(): string {
-  const now = new Date();
-  const t = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const dow = new Date(t).getUTCDay();
-  const monday = t - ((dow + 6) % 7) * 86400000;
-  return new Date(monday).toISOString().slice(0, 10);
+  return new Date(weekStartMs(new Date().toISOString())).toISOString().slice(0, 10);
+}
+
+/** Consecutive weeks with a ship (one week of grace), from ship dates. */
+function weeklyStreak(dates: string[]): number {
+  if (dates.length === 0) return 0;
+  const weeks = new Set(dates.map(weekStartMs));
+  const thisWeek = weekStartMs(new Date().toISOString());
+  let cursor = weeks.has(thisWeek) ? thisWeek : thisWeek - 7 * DAY_MS;
+  if (!weeks.has(cursor)) return 0;
+  let n = 0;
+  while (weeks.has(cursor)) {
+    n += 1;
+    cursor -= 7 * DAY_MS;
+  }
+  return n;
 }
 
 /** Short, human-typable join code without ambiguous characters. */
@@ -153,20 +187,86 @@ export async function listPods(userId: string, onlyPodId?: string): Promise<Pod[
   const monday = mondayISO();
   const out: Pod[] = [];
   for (const p of pods) {
-    const members = (await sql`
+    // Pull each member with their recent ship days, then derive streak +
+    // this-week cadence in JS (one query per pod instead of per member).
+    const rows = (await sql`
       SELECT b.handle,
              (b.user_id = ${userId}) AS "isYou",
-             EXISTS (
-               SELECT 1 FROM ship s
-               WHERE s.user_id = b.user_id AND s.shipped_on >= ${monday}
-             ) AS "shippedThisWeek"
-      FROM pod_member m JOIN builder b ON b.user_id = m.user_id
+             s.shipped_on::text AS day
+      FROM pod_member m
+      JOIN builder b ON b.user_id = m.user_id
+      LEFT JOIN ship s
+        ON s.user_id = b.user_id AND s.shipped_on >= current_date - 400
       WHERE m.pod_id = ${p.id}
-      ORDER BY b.handle
-    `) as PodMember[];
+    `) as { handle: string; isYou: boolean; day: string | null }[];
+
+    const byHandle = new Map<string, { isYou: boolean; days: string[] }>();
+    for (const r of rows) {
+      const e = byHandle.get(r.handle) ?? { isYou: r.isYou, days: [] };
+      if (r.day) e.days.push(r.day);
+      byHandle.set(r.handle, e);
+    }
+    const members: PodMember[] = [...byHandle.entries()]
+      .map(([handle, e]) => ({
+        handle,
+        isYou: e.isYou,
+        weeks: weeklyStreak(e.days),
+        shippedThisWeek: e.days.some((d) => d >= monday),
+      }))
+      .sort((a, b) => a.handle.localeCompare(b.handle));
+
     out.push({ ...p, members });
   }
   return out;
+}
+
+/**
+ * Recommends up to 5 similar builders, scored by three signals: shared
+ * self-declared tags, same primary language, and recent shipping activity.
+ * When too few score above zero, it fills the rest with other builders at
+ * random — "top or random 5".
+ */
+export async function suggestBuilders(userId: string): Promise<Suggestion[]> {
+  await ensureSchema();
+  const sql = getSql();
+  const me = await getBuilder(userId);
+  if (!me) return [];
+
+  const monday = mondayISO();
+  const rows = (await sql`
+    SELECT b.handle, b.tags, b.primary_lang AS "primaryLang",
+           EXISTS (
+             SELECT 1 FROM ship s
+             WHERE s.user_id = b.user_id AND s.shipped_on >= ${monday}
+           ) AS active
+    FROM builder b
+    WHERE b.user_id <> ${userId}
+  `) as { handle: string; tags: string[]; primaryLang: string | null; active: boolean }[];
+
+  const myTags = new Set((me.tags ?? []).map((t) => t.toLowerCase()));
+  const myLang = me.primaryLang?.toLowerCase() ?? null;
+
+  const scored = rows.map((r) => {
+    const shared = (r.tags ?? []).filter((t) => myTags.has(t.toLowerCase()));
+    const sameLang = !!myLang && r.primaryLang?.toLowerCase() === myLang;
+    // Tags dominate, language is a strong tiebreaker, activity nudges live
+    // builders up; a dash of jitter keeps equal scores from freezing an order.
+    const score =
+      shared.length * 3 + (sameLang ? 2 : 0) + (r.active ? 1 : 0) + Math.random() * 0.5;
+    return {
+      score,
+      suggestion: {
+        handle: r.handle,
+        primaryLang: r.primaryLang,
+        sharedTags: shared,
+        sameLang,
+        active: r.active,
+      } satisfies Suggestion,
+    };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, 5).map((s) => s.suggestion);
 }
 
 /** Records a ship for an opted-in builder (no-op for non-builders). */

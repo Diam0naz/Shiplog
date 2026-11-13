@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { put } from "@vercel/blob";
 import { requireUser } from "@/lib/session";
+import { signedBlobUrl } from "@/lib/blob";
 
 const MAX_BYTES = 4 * 1024 * 1024; // Vercel caps request bodies near 4.5 MB
 
@@ -49,9 +50,10 @@ export async function POST(req: Request) {
       { status: 415 },
     );
 
-  const blob = await put(`shiplog/${user.id}/${randomUUID()}.${kind.ext}`, ab, {
-    access: "public",
+  const pathname = `shiplog/${user.id}/${randomUUID()}.${kind.ext}`;
+  await put(pathname, ab, {
+    access: "private",
     contentType: kind.type,
   });
-  return NextResponse.json({ url: blob.url });
+  return NextResponse.json({ url: await signedBlobUrl(pathname) });
 }
