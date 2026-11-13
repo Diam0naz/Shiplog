@@ -91,9 +91,26 @@ const GLYPHS: [[&str; 5]; 7] = [
 ];
 
 const TAGLINE: &str = "turn your commits into posts";
-const INDENT: &str = "   ";
-/// Water ramp, low to high, for the animated wave under the wordmark.
-const WAVE: [char; 7] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇'];
+
+// Brand palette (truecolor), shared by every scene.
+const YELLOW: (u8, u8, u8) = (245, 197, 24);
+const WHITE: (u8, u8, u8) = (236, 239, 243);
+const GREY: (u8, u8, u8) = (150, 160, 172);
+const NAVY: (u8, u8, u8) = (46, 70, 104);
+const SEA: (u8, u8, u8) = (27, 116, 97);
+const BORDER: (u8, u8, u8) = (70, 92, 116);
+
+/// Content rows inside the terminal panel (height of every scene).
+const CH: usize = 5;
+
+/// One cell of a scene grid: a glyph and its colour, or blank (`rgb: None`).
+#[derive(Clone, Copy)]
+struct Cell {
+    ch: char,
+    rgb: Option<(u8, u8, u8)>,
+}
+const BLANK: Cell = Cell { ch: ' ', rgb: None };
+type Grid = Vec<Vec<Cell>>;
 
 /// Builds the five wordmark rows by joining each glyph's row with a space.
 fn wordmark_rows() -> [String; 5] {
@@ -126,94 +143,238 @@ fn lerp(a: (u8, u8, u8), b: (u8, u8, u8), t: f32) -> (u8, u8, u8) {
     (m(a.0, b.0), m(a.1, b.1), m(a.2, b.2))
 }
 
-/// One coloured wordmark row. `sweep` is the position (in `0..=1` space, but
-/// may sit off either edge) of a bright highlight band that slides across.
-fn paint_row(row: &str, row_idx: usize, span: f32, sweep: f32) -> String {
-    let mut out = String::new();
-    for (col, ch) in row.chars().enumerate() {
-        if ch == ' ' {
-            out.push(' ');
-            continue;
+fn blank_grid(w: usize) -> Grid {
+    vec![vec![BLANK; w]; CH]
+}
+
+fn put(g: &mut Grid, r: usize, c: usize, ch: char, rgb: (u8, u8, u8)) {
+    if r < g.len() && c < g[r].len() {
+        g[r][c] = Cell { ch, rgb: Some(rgb) };
+    }
+}
+
+/// Scene 1 — the wordmark. `sweep` is a bright highlight band (in diagonal
+/// `0..=1` space) that slides across; set it off-screen to settle the gradient.
+fn word_grid(w: usize, sweep: f32) -> Grid {
+    let mut g = blank_grid(w);
+    let rows = wordmark_rows();
+    let aw = rows[0].chars().count();
+    let off = w.saturating_sub(aw) / 2;
+    let span = aw as f32 + 6.0;
+    for (r, row) in rows.iter().enumerate() {
+        for (i, ch) in row.chars().enumerate() {
+            if ch == ' ' {
+                continue;
+            }
+            let p = (i as f32 + r as f32 * 1.5) / span;
+            let base = gradient(p.clamp(0.0, 1.0));
+            let band = (1.0 - (p - sweep).abs() / 0.16).max(0.0);
+            put(&mut g, r, off + i, '█', lerp(base, (245, 245, 255), band * 0.85));
         }
-        // Diagonal position so the gradient and sweep tilt across the mark.
-        let p = (col as f32 + row_idx as f32 * 1.5) / span;
-        let base = gradient(p.clamp(0.0, 1.0));
-        let band = (1.0 - (p - sweep).abs() / 0.16).max(0.0);
-        let (r, g, b) = lerp(base, (245, 245, 255), band * 0.85);
-        out.push_str(&ch.truecolor(r, g, b).bold().to_string());
     }
-    out
+    g
 }
 
-/// One animated water line beneath the wordmark.
-fn paint_wave(width: usize, phase: f32) -> String {
+/// Scene 2 — the stacked-bars logo mark inside a rounded tile.
+fn logo_grid(w: usize) -> Grid {
+    let mut g = blank_grid(w);
+    const ART: [&str; 5] = [
+        "╭────────╮",
+        "│ █████  │",
+        "│ ███    │",
+        "│ ██████ │",
+        "╰────────╯",
+    ];
+    let bars = [YELLOW, WHITE, GREY]; // rows 1,2,3
+    let off = w.saturating_sub(10) / 2;
+    for (r, line) in ART.iter().enumerate() {
+        for (i, ch) in line.chars().enumerate() {
+            match ch {
+                ' ' => {}
+                '█' => put(&mut g, r, off + i, ch, bars[r - 1]),
+                _ => put(&mut g, r, off + i, ch, BORDER),
+            }
+        }
+    }
+    g
+}
+
+/// Scene 3 — a little sailboat on a shimmering waterline. `phase` drives the
+/// water.
+fn ship_grid(w: usize, phase: f32) -> Grid {
+    let mut g = blank_grid(w);
+    const SAIL: [&str; 4] = ["   ▟▌", "  ▟█▌", " ▟██▌", "╲███╱"];
+    let fw = 7; // waterline is two columns wider than the 5-wide boat
+    let off = w.saturating_sub(fw) / 2;
+    for (r, line) in SAIL.iter().enumerate() {
+        for (i, ch) in line.chars().enumerate() {
+            if ch == ' ' {
+                continue;
+            }
+            let rgb = if r == 3 {
+                NAVY // hull
+            } else if ch == '▌' {
+                GREY // mast
+            } else {
+                lerp(YELLOW, WHITE, r as f32 / 3.0) // sail, warm at the top
+            };
+            put(&mut g, r, off + 1 + i, ch, rgb);
+        }
+    }
+    for c in 0..fw {
+        let t = ((c as f32 * 0.7 + phase).sin() * 0.5 + 0.5) * 0.6;
+        put(&mut g, 4, off + c, '~', lerp(SEA, (120, 200, 230), t));
+    }
+    g
+}
+
+/// A sweep-wipe between two scenes: `b` grows in from the left behind a bright
+/// vertical seam, revealing it over `a` as `p` goes `0..=1`.
+fn wipe(a: &Grid, b: &Grid, p: f32) -> Grid {
+    let w = a[0].len();
+    let edge = (p * (w as f32 + 2.0)) as isize - 1;
+    let mut g = blank_grid(w);
+    for r in 0..CH {
+        for c in 0..w {
+            let ci = c as isize;
+            g[r][c] = if ci < edge {
+                b[r][c]
+            } else if ci == edge {
+                Cell { ch: '▌', rgb: Some((250, 250, 255)) }
+            } else {
+                a[r][c]
+            };
+        }
+    }
+    g
+}
+
+/// Renders a scene inside the terminal-window chrome (traffic lights + title),
+/// as a fixed block of `CH + 4` lines. `\x1b[K` clears any leftover tail so a
+/// redraw never leaves stray glyphs.
+fn draw_panel(g: &Grid, w: usize) {
+    let bc = |s: &str| s.truecolor(BORDER.0, BORDER.1, BORDER.2).to_string();
+    let bar = "─".repeat(w);
     let mut out = String::new();
-    for col in 0..width {
-        let s = (col as f32 * 0.55 + phase).sin() * 0.5 + 0.5; // 0..1
-        let ch = WAVE[(s * (WAVE.len() - 1) as f32).round() as usize];
-        let (r, g, b) = lerp((56, 139, 220), (27, 116, 97), col as f32 / width as f32);
-        out.push_str(&ch.truecolor(r, g, b).to_string());
-    }
-    out
-}
 
-/// Prints one frame of the wordmark + wave. `\x1b[K` clears any leftover tail.
-fn draw_frame(rows: &[String; 5], span: f32, sweep: f32, wave_phase: f32) {
-    let width = rows[0].chars().count();
-    let mut buf = String::new();
-    for (i, row) in rows.iter().enumerate() {
-        buf.push_str(INDENT);
-        buf.push_str(&paint_row(row, i, span, sweep));
-        buf.push_str("\x1b[K\n");
+    out.push_str(&format!("{}{}{}\x1b[K\n", bc("╭"), bc(&bar), bc("╮")));
+
+    // Title bar: ● ● ●  …  shiplog
+    let dots = format!(
+        "{} {} {}",
+        "●".truecolor(237, 106, 94),
+        "●".truecolor(245, 197, 24),
+        "●".truecolor(92, 214, 176),
+    );
+    let gap = w.saturating_sub(14); // 1 + 5 dots + gap + 7 title + 1
+    out.push_str(&format!(
+        "{} {}{}{} {}\x1b[K\n",
+        bc("│"),
+        dots,
+        " ".repeat(gap),
+        "shiplog".truecolor(140, 160, 176).bold(),
+        bc("│"),
+    ));
+    out.push_str(&format!("{}{}{}\x1b[K\n", bc("├"), bc(&bar), bc("┤")));
+
+    for row in g {
+        let mut line = String::new();
+        for cell in row {
+            match cell.rgb {
+                Some((r, gg, b)) => {
+                    line.push_str(&cell.ch.truecolor(r, gg, b).to_string())
+                }
+                None => line.push(' '),
+            }
+        }
+        out.push_str(&format!("{}{}{}\x1b[K\n", bc("│"), line, bc("│")));
     }
-    buf.push_str(INDENT);
-    buf.push_str(&paint_wave(width, wave_phase));
-    buf.push_str("\x1b[K\n");
-    print!("{buf}");
+
+    out.push_str(&format!("{}{}{}\x1b[K\n", bc("╰"), bc(&bar), bc("╯")));
+    print!("{out}");
     let _ = std::io::stdout().flush();
 }
 
-/// The wordmark, printed once at startup (interactive sessions only). Animates
-/// a gradient shimmer sweeping across `shiplog` over a moving water line, then
-/// settles. Falls back to a compact static banner on narrow terminals, and
-/// skips the animation entirely when `SHIPLOG_NO_ANIM` is set.
-pub fn banner() {
-    let rows = wordmark_rows();
-    let art_w = rows[0].chars().count();
-    let span = art_w as f32 + 6.0;
+/// Total lines a panel occupies (top + title + rule + content + bottom).
+const PANEL_H: usize = CH + 4;
 
-    // Not enough room for the block letters — keep the old one-box banner.
-    if term_width() < art_w + INDENT.len() + 2 {
+/// The startup intro (interactive sessions only). Inside a terminal-window
+/// frame, it phase-shifts through three scenes — the logo mark, the `shiplog`
+/// wordmark, and a little ship — each joined by a bright sweep-wipe, then
+/// settles on the wordmark with a gradient shimmer. Falls back to a compact
+/// static banner on narrow terminals, and draws a single static frame when
+/// `SHIPLOG_NO_ANIM` is set.
+pub fn banner() {
+    // Panel width: as wide as the terminal allows, capped, with room for the
+    // wordmark; below that, keep the old one-box banner.
+    let w = term_width().saturating_sub(2).min(46);
+    if w < 35 {
         simple_banner();
         return;
     }
 
-    println!();
-    if std::env::var_os("SHIPLOG_NO_ANIM").is_none() {
-        const FRAMES: usize = 22;
-        for f in 0..FRAMES {
-            if f > 0 {
-                print!("\x1b[6A"); // back up over the 5 wordmark rows + wave
-            }
-            let t = f as f32 / (FRAMES - 1) as f32;
-            let sweep = -0.3 + 1.6 * t; // slide the highlight off both edges
-            draw_frame(&rows, span, sweep, f as f32 * 0.5);
-            std::thread::sleep(Duration::from_millis(38));
-        }
-        print!("\x1b[6A"); // settle: one last frame with the sweep gone
-    }
-    draw_frame(&rows, span, 2.0, FRAMES_SETTLE_PHASE);
+    let word = word_grid(w, 99.0); // settled (no sweep band)
 
+    if std::env::var_os("SHIPLOG_NO_ANIM").is_some() {
+        println!();
+        draw_panel(&word, w);
+        tagline(w);
+        return;
+    }
+
+    let logo = logo_grid(w);
+    let ship = ship_grid(w, 7.0);
+
+    println!();
+    let mut first = true;
+    let mut emit = |g: &Grid| {
+        if !first {
+            print!("\x1b[{PANEL_H}A"); // back up over the whole panel
+        }
+        first = false;
+        draw_panel(g, w);
+        std::thread::sleep(Duration::from_millis(26));
+    };
+
+    // 1. hold the logo
+    for _ in 0..6 {
+        emit(&logo);
+    }
+    // 2. logo → wordmark
+    for f in 1..=7 {
+        emit(&wipe(&logo, &word, f as f32 / 7.0));
+    }
+    // 3. wordmark, with the gradient shimmer sweeping across
+    for f in 0..12 {
+        emit(&word_grid(w, -0.3 + 1.6 * (f as f32 / 11.0)));
+    }
+    // 4. wordmark → ship
+    for f in 1..=7 {
+        emit(&wipe(&word, &ship, f as f32 / 7.0));
+    }
+    // 5. the ship sails on moving water
+    for f in 0..12 {
+        emit(&ship_grid(w, f as f32 * 0.5));
+    }
+    // 6. ship → wordmark, and settle
+    for f in 1..=7 {
+        emit(&wipe(&ship, &word, f as f32 / 7.0));
+    }
+    emit(&word);
+
+    tagline(w);
+}
+
+/// Centred tagline printed just below the panel.
+fn tagline(w: usize) {
+    let pad = (w + 2).saturating_sub(TAGLINE.chars().count()) / 2;
     println!(
         "{}{}",
-        INDENT,
+        " ".repeat(pad),
         TAGLINE.truecolor(120, 139, 150).italic()
     );
     println!();
 }
-
-/// Wave phase used for the final, settled frame.
-const FRAMES_SETTLE_PHASE: f32 = 11.0;
 
 /// Compact fallback banner for narrow terminals or where the animation is a
 /// poor fit. Mirrors the original one-box wordmark.
