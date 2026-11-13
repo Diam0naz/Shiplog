@@ -296,6 +296,43 @@ fn draw_panel(g: &Grid, w: usize) {
 /// Total lines a panel occupies (top + title + rule + content + bottom).
 const PANEL_H: usize = CH + 4;
 
+/// The full phase-shift sequence as a list of frames: logo → wordmark (with the
+/// gradient shimmer) → a little ship on water → settle on the wordmark. Built
+/// once so it can be played through (startup) or looped (while waiting).
+fn cinematic_frames(w: usize) -> Vec<Grid> {
+    let logo = logo_grid(w);
+    let word = word_grid(w, 99.0); // settled, no sweep band
+    let ship = ship_grid(w, 7.0);
+
+    let mut frames: Vec<Grid> = Vec::new();
+    for _ in 0..6 {
+        frames.push(logo.clone()); // hold the logo
+    }
+    for f in 1..=7 {
+        frames.push(wipe(&logo, &word, f as f32 / 7.0)); // logo → wordmark
+    }
+    for f in 0..12 {
+        frames.push(word_grid(w, -0.3 + 1.6 * (f as f32 / 11.0))); // shimmer
+    }
+    for f in 1..=7 {
+        frames.push(wipe(&word, &ship, f as f32 / 7.0)); // wordmark → ship
+    }
+    for f in 0..12 {
+        frames.push(ship_grid(w, f as f32 * 0.5)); // ship sails
+    }
+    for f in 1..=7 {
+        frames.push(wipe(&ship, &word, f as f32 / 7.0)); // ship → wordmark
+    }
+    frames.push(word); // settle
+    frames
+}
+
+/// The panel width, or `None` when the terminal is too narrow for the mark.
+fn panel_width() -> Option<usize> {
+    let w = term_width().saturating_sub(2).min(46);
+    (w >= 35).then_some(w)
+}
+
 /// The startup intro (interactive sessions only). Inside a terminal-window
 /// frame, it phase-shifts through three scenes — the logo mark, the `shiplog`
 /// wordmark, and a little ship — each joined by a bright sweep-wipe, then
@@ -303,64 +340,63 @@ const PANEL_H: usize = CH + 4;
 /// static banner on narrow terminals, and draws a single static frame when
 /// `SHIPLOG_NO_ANIM` is set.
 pub fn banner() {
-    // Panel width: as wide as the terminal allows, capped, with room for the
-    // wordmark; below that, keep the old one-box banner.
-    let w = term_width().saturating_sub(2).min(46);
-    if w < 35 {
+    let Some(w) = panel_width() else {
         simple_banner();
         return;
-    }
-
-    let word = word_grid(w, 99.0); // settled (no sweep band)
-
-    if std::env::var_os("SHIPLOG_NO_ANIM").is_some() {
-        println!();
-        draw_panel(&word, w);
-        tagline(w);
-        return;
-    }
-
-    let logo = logo_grid(w);
-    let ship = ship_grid(w, 7.0);
+    };
+    let frames = cinematic_frames(w);
 
     println!();
-    let mut first = true;
-    let mut emit = |g: &Grid| {
-        if !first {
-            print!("\x1b[{PANEL_H}A"); // back up over the whole panel
+    if std::env::var_os("SHIPLOG_NO_ANIM").is_some() {
+        draw_panel(frames.last().unwrap(), w);
+    } else {
+        for (i, f) in frames.iter().enumerate() {
+            if i > 0 {
+                print!("\x1b[{PANEL_H}A"); // back up over the whole panel
+            }
+            draw_panel(f, w);
+            std::thread::sleep(Duration::from_millis(26));
         }
-        first = false;
-        draw_panel(g, w);
-        std::thread::sleep(Duration::from_millis(26));
-    };
-
-    // 1. hold the logo
-    for _ in 0..6 {
-        emit(&logo);
     }
-    // 2. logo → wordmark
-    for f in 1..=7 {
-        emit(&wipe(&logo, &word, f as f32 / 7.0));
-    }
-    // 3. wordmark, with the gradient shimmer sweeping across
-    for f in 0..12 {
-        emit(&word_grid(w, -0.3 + 1.6 * (f as f32 / 11.0)));
-    }
-    // 4. wordmark → ship
-    for f in 1..=7 {
-        emit(&wipe(&word, &ship, f as f32 / 7.0));
-    }
-    // 5. the ship sails on moving water
-    for f in 0..12 {
-        emit(&ship_grid(w, f as f32 * 0.5));
-    }
-    // 6. ship → wordmark, and settle
-    for f in 1..=7 {
-        emit(&wipe(&ship, &word, f as f32 / 7.0));
-    }
-    emit(&word);
-
     tagline(w);
+}
+
+/// Loops the intro in place while `stop` is false, then wipes the panel away so
+/// the caller's next line prints cleanly. Used to fill idle waits (the browser
+/// sign-in, connection polling). No-op when output isn't an interactive
+/// terminal or when `SHIPLOG_NO_ANIM` is set, so callers keep their own static
+/// "waiting…" line for those cases.
+pub async fn wait_banner(stop: impl Fn() -> bool) {
+    if !interactive() || std::env::var_os("SHIPLOG_NO_ANIM").is_some() {
+        return;
+    }
+    let Some(w) = panel_width() else { return };
+    let frames = cinematic_frames(w);
+
+    println!();
+    let mut drew = false;
+    'outer: loop {
+        for f in &frames {
+            if stop() {
+                break 'outer;
+            }
+            if drew {
+                print!("\x1b[{PANEL_H}A");
+            }
+            drew = true;
+            draw_panel(f, w);
+            tokio::time::sleep(Duration::from_millis(30)).await;
+        }
+    }
+
+    // Erase the animation region (the leading blank line + the panel).
+    let total = PANEL_H + 1;
+    print!("\x1b[{total}A");
+    for _ in 0..total {
+        println!("\x1b[2K");
+    }
+    print!("\x1b[{total}A");
+    let _ = std::io::stdout().flush();
 }
 
 /// Centred tagline printed just below the panel.

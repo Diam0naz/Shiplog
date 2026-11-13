@@ -354,7 +354,10 @@ Colour and the banner are also skipped automatically when output is not a
 terminal, so `shiplog post | tee log` stays plain text. The startup intro
 phase-shifts through three scenes inside a terminal window — the logo mark, the
 `shiplog` wordmark, and a little ship — each joined by a bright sweep, then
-settles on the wordmark. Set `SHIPLOG_NO_ANIM` to render a single static frame.
+settles on the wordmark. It also **loops continuously while shiplog waits** — for
+the browser during `login`, or while `connect` polls — and clears itself the
+moment the wait ends. Set `SHIPLOG_NO_ANIM` to render a single static frame and
+skip the looping.
 
 ### Where state lives
 

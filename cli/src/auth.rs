@@ -1,7 +1,14 @@
 use anyhow::{Context, Result, bail};
 use rand::{Rng, distributions::Alphanumeric};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs, io::Write, time::Duration};
+use std::{
+    collections::HashMap,
+    fs,
+    io::Write,
+    sync::Arc,
+    sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
+};
 use url::Url;
 
 use crate::ui;
@@ -97,7 +104,7 @@ pub async fn login() -> Result<()> {
     let expected = state.clone();
     // tiny_http is sync; run it on the blocking thread pool so the async
     // runtime is not stalled.
-    let code = tokio::task::spawn_blocking(move || -> Result<String> {
+    let handle = tokio::task::spawn_blocking(move || -> Result<String> {
         let timeout = Duration::from_secs(180);
         loop {
             // recv_timeout returns Ok(None) on timeout, Ok(Some(req)) on a
@@ -260,8 +267,11 @@ pub async fn login() -> Result<()> {
             );
             return Ok(code);
         }
-    })
-    .await??;
+    });
+
+    // Fill the wait with the looping intro until the browser comes back.
+    ui::wait_banner(|| handle.is_finished()).await;
+    let code = handle.await??;
 
     // Exchange the one-time code for a persistent session token.
     let resp = reqwest::Client::new()
@@ -361,26 +371,43 @@ pub async fn connect(platform: Option<String>) -> Result<()> {
         ui::info("Complete the authorization, then return here.");
         let _ = open::that(&url);
 
-        // Poll /api/connections until the platform shows as connected
+        // Poll /api/connections until the platform shows as connected, looping
+        // the intro animation (when interactive) to fill the wait.
         ui::info("Waiting for connection to complete...");
-        let client = reqwest::Client::new();
-        let mut connected = false;
-        for _ in 0..60 {
-            // Poll for up to 60 * 5s = 5 minutes
-            tokio::time::sleep(Duration::from_secs(5)).await;
-            let resp = client
-                .get(format!("{base}/api/connections"))
-                .bearer_auth(&token)
-                .send()
-                .await?;
-            if resp.status().is_success() {
-                let data: serde_json::Value = resp.json().await?;
-                if data.get(p).and_then(|v| v.get("connected")).and_then(|v| v.as_bool()) == Some(true) {
-                    connected = true;
-                    break;
+        let done = Arc::new(AtomicBool::new(false));
+        let connected_flag = Arc::new(AtomicBool::new(false));
+        let poll = {
+            let (done, connected_flag) = (done.clone(), connected_flag.clone());
+            let (base, token, platform) = (base.clone(), token.clone(), p.to_string());
+            tokio::spawn(async move {
+                let client = reqwest::Client::new();
+                for _ in 0..60 {
+                    // Poll for up to 60 * 5s = 5 minutes.
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    let Ok(resp) = client
+                        .get(format!("{base}/api/connections"))
+                        .bearer_auth(&token)
+                        .send()
+                        .await
+                    else {
+                        continue;
+                    };
+                    if resp.status().is_success()
+                        && let Ok(data) = resp.json::<serde_json::Value>().await
+                        && data.get(&platform).and_then(|v| v.get("connected")).and_then(|v| v.as_bool())
+                            == Some(true)
+                    {
+                        connected_flag.store(true, Ordering::SeqCst);
+                        break;
+                    }
                 }
-            }
-        }
+                done.store(true, Ordering::SeqCst);
+            })
+        };
+
+        ui::wait_banner(|| done.load(Ordering::SeqCst)).await;
+        let _ = poll.await; // ensure polling finished (covers the non-animating path)
+        let connected = connected_flag.load(Ordering::SeqCst);
         if connected {
             ui::ok(&format!("{p} connected successfully"));
         } else {
