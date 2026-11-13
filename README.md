@@ -116,10 +116,14 @@ shiplog post
 ```
 
 Pick **Edit** to open `$EDITOR` with the draft, **Post** to publish, or **Skip**
-to exit without posting. When more than one account is connected, **Post**
-first asks which platform(s) should receive the text. The draft shows a live
-character budget — both LinkedIn and X cap a post at 280 characters (green
-while comfortably under, yellow past 80%, red over).
+to exit without posting. After an edit, shiplog runs a quick AI **grounding
+check**: it compares your edited text against the actual commits and flags any
+claim they don't support (invented features, numbers or scope) so you never
+announce work you didn't ship. It's advisory — fix the flagged claims and edit
+again, or post anyway. (The check needs the `LLM_*` vars; without them it's
+skipped.) When more than one account is connected, **Post** first asks which
+platform(s) should receive the text. The draft shows a live character budget —
+over 280 it posts as a thread on X (see above).
 
 To skip the picker, name the targets:
 

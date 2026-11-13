@@ -272,12 +272,66 @@ async fn render_card(
     Ok(ImageRef { url: c.url, alt: Some(c.alt) })
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct Commit {
     hash: String,
     subject: String,
     body: String,
     files: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct ReviewReq<'a> {
+    text: &'a str,
+    commits: &'a [Commit],
+}
+
+#[derive(Deserialize)]
+struct ReviewResp {
+    #[serde(default)]
+    ok: bool,
+    #[serde(default)]
+    issues: Vec<String>,
+    #[serde(default)]
+    skipped: bool,
+}
+
+/// Fact-checks a hand-edited draft against the commits, so the author never
+/// claims work the commits don't support. Advisory and best-effort: any failure
+/// is silent so it can never block posting.
+async fn review_edit(
+    client: &reqwest::Client,
+    base: &str,
+    token: &str,
+    text: &str,
+    commits: &[Commit],
+) {
+    ui::step("Checking your edit against the commits…");
+    let resp = match client
+        .post(format!("{base}/api/review"))
+        .bearer_auth(token)
+        .json(&ReviewReq { text, commits })
+        .send()
+        .await
+    {
+        Ok(r) if r.status().is_success() => r,
+        _ => return,
+    };
+    let Ok(review) = resp.json::<ReviewResp>().await else {
+        return;
+    };
+    if review.skipped {
+        return; // no model configured, or it couldn't answer
+    }
+    if review.ok {
+        ui::ok("Your edit is backed by the commits.");
+    } else {
+        ui::warn("These claims may not be supported by your commits:");
+        for issue in &review.issues {
+            ui::info(&format!("• {issue}"));
+        }
+        ui::info("Edit again to fix them, or post if you're confident.");
+    }
 }
 
 #[derive(Serialize)]
@@ -662,7 +716,7 @@ pub async fn run(
         .post(format!("{base}/api/draft"))
         .bearer_auth(&token)
         .json(&DraftReq {
-            commits,
+            commits: commits.clone(), // keep `commits` for the post-edit review
             note,
             voice: crate::voice::load(),
             release: version,
@@ -820,6 +874,8 @@ pub async fn run(
                     .with_predefined_text(&draft)
                     .with_render_config(ui::render_config())
                     .prompt()?;
+                // Ground the hand-edited draft against the commits.
+                review_edit(&client, &base, &token, &draft, &commits).await;
             }
             OPT_CARD_ADD => {
                 if local_images.len() >= MAX_IMAGES {
