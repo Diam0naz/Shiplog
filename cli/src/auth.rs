@@ -438,16 +438,25 @@ async fn select_platforms_interactive(base: &str, token: &str) -> Result<Vec<&'s
         Err(_) => serde_json::json!({}),
     };
 
-    let li_connected = status.get("linkedin").and_then(|v| v.get("connected")).and_then(|v| v.as_bool()) == Some(true);
-    let x_connected = status.get("x").and_then(|v| v.get("connected")).and_then(|v| v.as_bool()) == Some(true);
-    let fc_connected = status.get("farcaster").and_then(|v| v.get("connected")).and_then(|v| v.as_bool()) == Some(true);
+    // A connected-but-expired token still needs reconnecting, so don't present
+    // it as a clean "✓ connected".
+    let label = |p: &str| -> &'static str {
+        let node = status.get(p);
+        let connected = node.and_then(|v| v.get("connected")).and_then(|v| v.as_bool()) == Some(true);
+        let expired = node.and_then(|v| v.get("expired")).and_then(|v| v.as_bool()) == Some(true);
+        match (connected, expired) {
+            (true, false) => "✓ connected",
+            (true, true) => "⚠ expired — reconnect",
+            _ => "",
+        }
+    };
 
     println!();
     ui::heading("Connect publishing platforms");
     println!();
-    println!("  1) LinkedIn  {}", if li_connected { "✓ connected" } else { "" });
-    println!("  2) X (Twitter)  {}", if x_connected { "✓ connected" } else { "" });
-    println!("  3) Farcaster  {}", if fc_connected { "✓ connected" } else { "" });
+    println!("  1) LinkedIn  {}", label("linkedin"));
+    println!("  2) X (Twitter)  {}", label("x"));
+    println!("  3) Farcaster  {}", label("farcaster"));
     println!("  4) All");
     println!("  5) Skip");
     println!();

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { userFromCookie } from "@/lib/session";
+import { linkedinRedirectUri } from "@/lib/linkedin";
 import { saveLinkedIn } from "@/lib/tokens";
 import { themedError, themedSuccess } from "@/lib/oauth-response";
 
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
       body: new URLSearchParams({
         grant_type: "authorization_code",
         code,
-        redirect_uri: process.env.LINKEDIN_REDIRECT_URI!,
+        redirect_uri: linkedinRedirectUri(req.url),
         client_id: process.env.LINKEDIN_CLIENT_ID!,
         client_secret: process.env.LINKEDIN_CLIENT_SECRET!,
       }),

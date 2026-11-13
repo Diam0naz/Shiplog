@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { userFromCookie } from "@/lib/session";
+import { linkedinRedirectUri } from "@/lib/linkedin";
 
 export async function GET(req: NextRequest) {
   const user = await userFromCookie(req);
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: process.env.LINKEDIN_CLIENT_ID!,
-    redirect_uri: process.env.LINKEDIN_REDIRECT_URI!,
+    redirect_uri: linkedinRedirectUri(req.url),
     state,
     // openid + profile identify the member; w_member_social is what lets the
     // app publish on their behalf. Posting fails without it, so it is required

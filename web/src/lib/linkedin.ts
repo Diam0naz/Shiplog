@@ -4,6 +4,18 @@ import { loadLinkedIn } from "./tokens";
 
 export const LINKEDIN_CONNECT_PATH = "/api/linkedin/connect";
 
+/**
+ * The OAuth callback URL. Follows the request origin (so a localhost connect
+ * returns to localhost, a production connect to production), with
+ * LINKEDIN_REDIRECT_URI as an optional override — matching the GitHub and X
+ * flows. Pinning it to one environment is what made local connects bounce to
+ * the production callback, where there is no session.
+ */
+export function linkedinRedirectUri(requestUrl: string) {
+  const env = process.env.LINKEDIN_REDIRECT_URI?.trim();
+  return env || `${new URL(requestUrl).origin}/api/linkedin/callback`;
+}
+
 // The commentary field treats these characters as markup, so escape them
 const RESERVED = /[\\|{}@\[\]()<>#*_~]/g;
 const escapeCommentary = (s: string) => s.replace(RESERVED, (m) => "\\" + m);
