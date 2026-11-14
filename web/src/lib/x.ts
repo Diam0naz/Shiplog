@@ -21,10 +21,13 @@ export const X_CONNECT_PATH = "/api/x/connect";
  * correct for localhost and for preview deployments.
  */
 export function redirectUriFor(requestUrl: string) {
-  return (
-    process.env.X_REDIRECT_URI ??
-    `${new URL(requestUrl).origin}/api/x/callback`
-  );
+  const origin = new URL(requestUrl).origin;
+  const env = process.env.X_REDIRECT_URI?.trim();
+  // A pinned production override can never be the right callback for a
+  // localhost request, so always use the request origin on localhost even when
+  // the env is set (and regardless of a wrong path pinned there).
+  const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  return env && !isLocal ? env : `${origin}/api/x/callback`;
 }
 
 function clientId() {
