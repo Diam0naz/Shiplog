@@ -13,11 +13,15 @@ use url::Url;
 
 use crate::ui;
 
-/// The base URL for the shiplog web service.
-/// Override with SHIPLOG_WEB to point at a staging or self-hosted instance,
-/// e.g. `SHIPLOG_WEB=https://staging.shiplog.dev shiplog login`.
+/// The hosted shiplog backend the CLI talks to by default, so an end user never
+/// has to run the web app themselves.
+const DEFAULT_WEB: &str = "https://shiplog-sage.vercel.app";
+
+/// The base URL for the shiplog web service. Defaults to the hosted instance;
+/// set SHIPLOG_WEB to point elsewhere — e.g. a local dev server when working on
+/// shiplog itself (`SHIPLOG_WEB=http://localhost:3000`) or a self-hosted deploy.
 pub fn web_base() -> String {
-    std::env::var("SHIPLOG_WEB").unwrap_or_else(|_| "http://localhost:3000".into())
+    std::env::var("SHIPLOG_WEB").unwrap_or_else(|_| DEFAULT_WEB.into())
 }
 
 #[derive(Serialize, Deserialize)]

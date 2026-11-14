@@ -56,12 +56,17 @@ cargo install --path cli     # installs to ~/.cargo/bin/shiplog
 
 ### 3. Point the CLI at the web app
 
-The CLI defaults to `http://localhost:3000`. If your dev server is on another
-port or host:
+The CLI talks to the **hosted backend by default** (`https://shiplog-sage.vercel.app`),
+so as an end user you don't run the web app at all — just install the CLI and
+go. Point it elsewhere only when you're **developing shiplog** against your own
+local server (or a self-hosted deploy):
 
 ```sh
-export SHIPLOG_WEB=http://localhost:3001
+export SHIPLOG_WEB=http://localhost:3000   # the dev server from step 1
 ```
+
+The rest of this Setup section is for running your own instance; to just use
+shiplog, skip to **Log in** below.
 
 ### 4. Log in
 
@@ -345,7 +350,7 @@ Set the variables from the table above in the Vercel project (dashboard or
 
 | Variable | Default | Effect |
 |---|---|---|
-| `SHIPLOG_WEB` | `http://localhost:3000` | Base URL of the web app |
+| `SHIPLOG_WEB` | `https://shiplog-sage.vercel.app` | Base URL of the hosted backend. Set to `http://localhost:3000` only when developing shiplog against a local web server |
 | `NO_COLOR` | unset | Set to any non-empty value to disable colour |
 | `SHIPLOG_NO_ANIM` | unset | Set to any value to draw the startup banner once, without the animated intro |
 | `SHIPLOG_DEBUG` | unset | Print the full error cause chain |
