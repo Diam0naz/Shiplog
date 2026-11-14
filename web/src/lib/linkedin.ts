@@ -12,8 +12,13 @@ export const LINKEDIN_CONNECT_PATH = "/api/linkedin/connect";
  * the production callback, where there is no session.
  */
 export function linkedinRedirectUri(requestUrl: string) {
+  const origin = new URL(requestUrl).origin;
   const env = process.env.LINKEDIN_REDIRECT_URI?.trim();
-  return env || `${new URL(requestUrl).origin}/api/linkedin/callback`;
+  // A pinned production override can never be the right callback for a
+  // localhost request (it would land on prod, which has no local session), so
+  // always use the request origin on localhost even when the env is set.
+  const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  return env && !isLocal ? env : `${origin}/api/linkedin/callback`;
 }
 
 // The commentary field treats these characters as markup, so escape them
