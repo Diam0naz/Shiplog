@@ -24,3 +24,12 @@ export async function signedBlobUrl(pathname: string): Promise<string> {
   });
   return presignedUrl;
 }
+
+/**
+ * A short, permanent public URL that serves a private blob through our own
+ * `/i/` proxy. Unlike a presigned URL it never expires and stays well under
+ * Farcaster's 256-byte embed limit, so it's safe to embed in a cast.
+ */
+export function blobProxyUrl(pathname: string, origin: string): string {
+  return `${origin.replace(/\/+$/, "")}/i/${pathname}`;
+}

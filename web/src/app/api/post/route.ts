@@ -52,7 +52,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "empty post" }, { status: 400 });
   }
 
-  const images = parseImages((body as { images?: unknown }).images);
+  const images = parseImages(
+    (body as { images?: unknown }).images,
+    new URL(req.url).origin,
+  );
   if (images === null) {
     return NextResponse.json({ error: "invalid images" }, { status: 400 });
   }
