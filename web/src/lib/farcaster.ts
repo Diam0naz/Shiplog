@@ -209,15 +209,21 @@ export async function postToFarcaster(
       `Farcaster not connected. Connect at ${FARCASTER_CONNECT_PATH}`,
     );
 
+  // Farcaster caps embed URLs at 256 bytes, so drop any that are too long
+  // rather than failing the whole cast (public blob URLs are well under this;
+  // private signed URLs are not).
+  const embeds = images
+    .slice(0, 2)
+    .map((i) => ({ url: i.url }))
+    .filter((e) => Buffer.byteLength(e.url, "utf8") <= 256);
+
   const res = await fetch(`${apiBase()}/farcaster/cast`, {
     method: "POST",
     headers: neynarHeaders(),
     body: JSON.stringify({
       signer_uuid: auth.signerUuid,
       text,
-      ...(images.length
-        ? { embeds: images.slice(0, 2).map((i) => ({ url: i.url })) }
-        : {}),
+      ...(embeds.length ? { embeds } : {}),
     }),
   });
   const body = (await res.json().catch(() => null)) as {

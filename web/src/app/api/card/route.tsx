@@ -158,7 +158,7 @@ export async function POST(req: Request) {
 
   const pathname = `shiplog/${user.id}/cards/${randomUUID()}.png`;
   await put(pathname, png, {
-    access: "private",
+    access: "public",
     contentType: "image/png",
   });
 

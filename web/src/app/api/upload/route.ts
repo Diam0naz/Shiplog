@@ -52,7 +52,7 @@ export async function POST(req: Request) {
 
   const pathname = `shiplog/${user.id}/${randomUUID()}.${kind.ext}`;
   await put(pathname, ab, {
-    access: "private",
+    access: "public",
     contentType: kind.type,
   });
   return NextResponse.json({ url: await signedBlobUrl(pathname) });
