@@ -150,6 +150,19 @@ export default function FarcasterConnectClient() {
             <p style={{ color: "var(--ink-3)", fontSize: "0.875rem" }}>
               Waiting for approval… this page updates automatically.
             </p>
+            <p
+              style={{
+                marginTop: "0.75rem",
+                color: "var(--ink-3)",
+                fontSize: "0.8125rem",
+                lineHeight: 1.5,
+              }}
+            >
+              On a slower phone, the first scan may only open your wallet — give
+              it a moment, then <strong>scan again</strong> (or tap
+              “Open&nbsp;in&nbsp;wallet”) to reach the approval screen. Keep this
+              tab open; it flips to “Connected” on its own once you approve.
+            </p>
           </>
         )}
 
